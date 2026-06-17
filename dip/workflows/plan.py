@@ -34,12 +34,14 @@ class PlanWorkflow:
         compiler: ContextCompiler,
         llm: LLMClient,
         memory=None,
+        skills=None,
     ) -> None:
         self._store = store
         self._tasks = tasks
         self._compiler = compiler
         self._llm = llm
         self._memory = memory
+        self._skills = skills
 
     def generate_plan(self, task_id: str) -> StoredPlan:
         task = self._tasks.get_task(task_id)
@@ -51,14 +53,27 @@ class PlanWorkflow:
         memory_labels: list[str] = []
         if self._memory is not None:
             memory_labels = [m.label for m in self._memory.retrieve(task.project_id, task.request)]
+
+        skill_briefs: list[str] = []
+        if self._skills is not None:
+            from dip.skills.loader import format_skill_brief
+
+            project = self._store.get_project(task.project_id)
+            if project is not None:
+                skill_briefs = [
+                    format_skill_brief(s)
+                    for s in self._skills.retrieve(project.root_path, task.request)
+                ]
+
         context = self._compiler.build_plan_context(
-            task.project_id, task.request, memory_items=memory_labels
+            task.project_id, task.request, memory_items=memory_labels, skill_items=skill_briefs
         )
         self._tasks.record_event(
             task_id,
             "context_compiled",
-            f"Compiled {len(context.source_regions)} evidence region(s) and "
-            f"{len(memory_labels)} memory item(s), ~{context.token_estimate} tokens.",
+            f"Compiled {len(context.source_regions)} evidence region(s), "
+            f"{len(memory_labels)} memory item(s), {len(skill_briefs)} skill(s), "
+            f"~{context.token_estimate} tokens.",
         )
 
         messages = build_plan_messages(context)

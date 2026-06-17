@@ -8,9 +8,10 @@ so wiring lives in exactly one place. This module imports no UI framework.
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 
 from dip.context.compiler import ContextCompiler
-from dip.core.config import Settings, load_settings
+from dip.core.config import Settings, load_repo_settings, load_settings
 from dip.core.jobs import JobService
 from dip.core.memory import MemoryService
 from dip.core.projects import ProjectService
@@ -52,6 +53,9 @@ class Container:
         self.tasks = TaskService(self.store)
         self.memory = MemoryService(self.store)
         self.skills = SkillLoader()
+        # Set by ``for_repo`` when the container is bound to a single repo.
+        self.project = None
+        self.project_id: str | None = None
         # Per-role routing. A test-injected ``llm`` is returned for every role.
         self.router = LLMRouter(settings.llm, override=llm)
         self.llm: LLMClient = self.router.for_role(roles.CODER)
@@ -70,7 +74,7 @@ class Container:
         )
         self.plan = PlanWorkflow(
             self.store, self.tasks, self.compiler,
-            self.router.for_role(roles.PLANNER), memory=self.memory,
+            self.router.for_role(roles.PLANNER), memory=self.memory, skills=self.skills,
         )
         self.implement = ImplementWorkflow(
             self.store,
@@ -116,3 +120,40 @@ class Container:
         settings = settings or load_settings()
         conn = connect(settings.database_path)
         return cls(settings, conn, llm=llm)
+
+    @classmethod
+    def for_repo(
+        cls,
+        repo_path: Path | str,
+        base_settings: Settings | None = None,
+        llm: LLMClient | None = None,
+    ) -> "Container":
+        """Build a container bound to one repo, storing data in ``<repo>/.dip``.
+
+        Applies the repo's ``.devintel.yaml`` overrides, keeps the store inside
+        the repo (gitignored via a self-ignore file), and registers the repo as
+        the store's single project so data persists in the repo across sessions.
+        """
+
+        root = Path(repo_path).expanduser().resolve()
+        base = base_settings or load_settings()
+        settings = load_repo_settings(base, root)
+        settings = settings.model_copy(update={"storage_dir": root / ".dip"})
+
+        conn = connect(settings.database_path)
+        _ensure_self_ignore(settings.storage_dir)
+        container = cls(settings, conn, llm=llm)
+
+        project = container.projects.register_project(root)
+        container.project = project
+        container.project_id = project.id
+        return container
+
+
+def _ensure_self_ignore(dip_dir: Path) -> None:
+    """Write a ``.gitignore`` (``*``) inside ``.dip`` so git ignores the folder."""
+
+    dip_dir.mkdir(parents=True, exist_ok=True)
+    gitignore = dip_dir / ".gitignore"
+    if not gitignore.exists():
+        gitignore.write_text("*\n", encoding="utf-8")

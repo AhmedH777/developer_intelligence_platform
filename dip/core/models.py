@@ -106,6 +106,7 @@ class ContextPackage(BaseModel):
     role: str = "explainer"
     source_regions: list[SourceRegion] = Field(default_factory=list)
     memory_items: list[str] = Field(default_factory=list)
+    skills: list[str] = Field(default_factory=list)
     char_estimate: int = 0
     token_estimate: int = 0
     notes: list[str] = Field(default_factory=list)

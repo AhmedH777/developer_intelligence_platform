@@ -126,6 +126,7 @@ class Settings(BaseModel):
     """Top-level application settings."""
 
     storage_dir: Path = Field(default=Path(".dip"))
+    registry_path: Path = Field(default_factory=lambda: Path.home() / ".dip" / "registry.json")
     llm: LLMSettings = Field(default_factory=LLMSettings)
     safety: SafetySettings = Field(default_factory=SafetySettings)
     commands: CommandSettings = Field(default_factory=CommandSettings)
@@ -190,7 +191,37 @@ def _apply_env_overrides(data: dict[str, Any], env: dict[str, str]) -> dict[str,
     storage = env.get("DIP_STORAGE_DIR")
     if storage:
         data["storage_dir"] = storage
+    registry = env.get("DIP_REGISTRY_PATH")
+    if registry:
+        data["registry_path"] = registry
     return data
+
+
+# Per-repo agent config (committed) lives at <repo>/.devintel.yaml.
+REPO_CONFIG_FILENAME = ".devintel.yaml"
+
+# Top-level Settings sections a repo is allowed to override.
+_REPO_OVERRIDABLE = {"llm", "safety", "commands", "architecture", "orchestrator"}
+
+
+def load_repo_settings(base: Settings, repo_root: Path | str) -> Settings:
+    """Merge a repo's ``.devintel.yaml`` over ``base`` (per top-level section).
+
+    Only the sections in ``_REPO_OVERRIDABLE`` may be overridden; ``storage_dir``
+    and ``registry_path`` are always controlled by the host, not the repo.
+    """
+
+    cfg = Path(repo_root) / REPO_CONFIG_FILENAME
+    if not cfg.exists():
+        return base
+    loaded = yaml.safe_load(cfg.read_text(encoding="utf-8")) or {}
+    if not isinstance(loaded, dict):
+        raise ValueError(f"{cfg} must contain a YAML mapping.")
+    data = base.model_dump()
+    for key, value in loaded.items():
+        if key in _REPO_OVERRIDABLE:
+            data[key] = value
+    return Settings.model_validate(data)
 
 
 def load_settings(

@@ -8,9 +8,18 @@ alongside the project, with no schema ceremony.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from dip.core.models import Skill
+
+_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
+_STOPWORDS = {
+    "the", "and", "for", "with", "that", "this", "from", "add", "use", "using",
+    "a", "an", "of", "to", "in", "on", "is", "it", "be", "as", "page", "skill",
+}
+# Sections most useful to inject into a planning prompt.
+_BRIEF_SECTIONS = ("Required steps", "Steps", "Constraints", "Verification commands")
 
 
 class SkillLoader:
@@ -32,6 +41,21 @@ class SkillLoader:
                 continue
             skills.append(parse_skill(text, str(path)))
         return skills
+
+    def retrieve(self, project_root: str, query: str, limit: int = 2) -> list[Skill]:
+        """Return skills most relevant to ``query`` by keyword overlap."""
+
+        query_tokens = _tokens(query)
+        if not query_tokens:
+            return []
+        scored: list[tuple[int, Skill]] = []
+        for skill in self.load(project_root):
+            haystack = " ".join([skill.name, skill.purpose, *skill.sections.values()])
+            overlap = len(query_tokens & _tokens(haystack))
+            if overlap:
+                scored.append((overlap, skill))
+        scored.sort(key=lambda t: -t[0])
+        return [s for _, s in scored[:limit]]
 
 
 def parse_skill(text: str, path: str) -> Skill:
@@ -65,3 +89,24 @@ def parse_skill(text: str, path: str) -> Skill:
 
     purpose = "\n".join(purpose_lines).strip()
     return Skill(name=name, path=path, purpose=purpose, sections=sections, raw=text)
+
+
+def format_skill_brief(skill: Skill) -> str:
+    """Compact, prompt-friendly rendering of a skill (name, purpose, key steps)."""
+
+    parts = [f"Skill: {skill.name}"]
+    if skill.purpose:
+        parts.append(skill.purpose.strip())
+    for heading in _BRIEF_SECTIONS:
+        body = skill.sections.get(heading)
+        if body:
+            parts.append(f"{heading}:\n{body.strip()}")
+    return "\n".join(parts)
+
+
+def _tokens(text: str) -> set[str]:
+    return {
+        m.group(0).lower()
+        for m in _TOKEN_RE.finditer(text)
+        if m.group(0).lower() not in _STOPWORDS
+    }

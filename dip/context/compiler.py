@@ -91,6 +91,7 @@ class ContextCompiler:
         request: str,
         max_regions: int = 6,
         memory_items: list[str] | None = None,
+        skill_items: list[str] | None = None,
     ) -> ContextPackage:
         """Gather repository evidence relevant to a free-form feature/bug request.
 
@@ -149,6 +150,7 @@ class ContextCompiler:
             role="planner",
             source_regions=regions,
             memory_items=memory_items or [],
+            skills=skill_items or [],
             char_estimate=char_estimate,
             token_estimate=char_estimate // CHARS_PER_TOKEN,
             notes=notes,

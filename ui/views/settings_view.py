@@ -1,34 +1,46 @@
-"""Settings page: register a repository and view the active LLM configuration."""
+"""Settings page: register repositories and view configuration."""
 
 from __future__ import annotations
 
 import streamlit as st
 
-from dip.core.projects import ProjectError
-from ui.state import get_container, set_active_project_id
+from dip.llm.router import ALL_ROLES, LLMRouter
+from ui.state import (
+    drop_container,
+    get_active_repo_path,
+    get_container,
+    get_registry,
+    get_settings,
+    set_active_repo_path,
+)
 
 
 def render() -> None:
     st.header("Settings")
-    container = get_container()
+    registry = get_registry()
 
     st.subheader("Register a Python repository")
-    with st.form("register_project"):
+    st.caption(
+        "Each repo stores its own data in a gitignored `<repo>/.dip/` folder, so "
+        "memory and history travel with the repository."
+    )
+    with st.form("register_repo"):
         path = st.text_input("Absolute path to the repository root")
         name = st.text_input("Display name (optional)")
         submitted = st.form_submit_button("Register & index")
-    if submitted:
+    if submitted and path.strip():
         try:
-            project = container.projects.register_project(path, name=name or None)
-        except ProjectError as exc:
+            entry = registry.register(path, name=name or None)
+        except ValueError as exc:
             st.error(str(exc))
         else:
+            set_active_repo_path(entry.path)
+            container = get_container()
             with st.spinner("Indexing repository…"):
-                result = container.index.index_project(project.id)
-            set_active_project_id(project.id)
+                result = container.index.index_project(container.project_id)
             st.success(
-                f"Registered '{project.name}'. Indexed {result.files_indexed} files / "
-                f"{result.symbols_indexed} symbols."
+                f"Registered '{entry.name}'. Indexed {result.files_indexed} files / "
+                f"{result.symbols_indexed} symbols into {entry.path}/.dip."
             )
             if result.errors:
                 with st.expander(f"{len(result.errors)} file(s) skipped"):
@@ -36,8 +48,30 @@ def render() -> None:
                         st.text(err)
 
     st.divider()
-    st.subheader("Local LLM endpoint (read-only view)")
-    llm = container.settings.llm
+    st.subheader("Registered repositories")
+    entries = registry.list()
+    if not entries:
+        st.caption("None yet.")
+    for entry in entries:
+        cols = st.columns([4, 1])
+        active = " ✅ active" if entry.path == get_active_repo_path() else ""
+        cols[0].write(f"- **{entry.name}**{active} — `{entry.path}`")
+        if cols[1].button("Remove", key=f"rm_{entry.path}"):
+            registry.remove(entry.path)
+            drop_container(entry.path)
+            if get_active_repo_path() == entry.path:
+                set_active_repo_path(None)
+            st.rerun()
+
+    # Configuration display reflects the active repo if one is selected (so
+    # per-repo .devintel.yaml overrides are visible), else the global defaults.
+    container = get_container()
+    settings = container.settings if container else get_settings()
+    router = container.router if container else LLMRouter(settings.llm)
+
+    st.divider()
+    st.subheader("Local LLM endpoint")
+    llm = settings.llm
     st.write(
         {
             "base_url": llm.base_url,
@@ -48,27 +82,19 @@ def render() -> None:
         }
     )
     st.caption(
-        "Set these in a gitignored `.env` file at the repo root (copy `.env.example`), "
-        "or in `config/settings.yaml`, or via `DIP_LLM_*` environment variables. "
-        "Restart the app to apply changes."
+        "Set these in a gitignored `.env` file, `config/settings.yaml`, or via "
+        "`DIP_LLM_*` env vars. Per-repo overrides go in `<repo>/.devintel.yaml`. "
+        "Restart to apply."
     )
 
-    st.divider()
     st.subheader("Model routing by role")
-    from dip.llm.router import ALL_ROLES
-
     st.write(
-        {role: dict(zip(("model", "temperature"), container.router.resolved_model(role)))
+        {role: dict(zip(("model", "temperature"), router.resolved_model(role)))
          for role in ALL_ROLES}
     )
-    st.caption(
-        "Override per role under `llm.roles` in `config/settings.yaml` (model and/or "
-        "temperature). Unset roles fall back to the base model above."
-    )
 
-    st.divider()
     st.subheader("Auto-pilot")
-    orch = container.settings.orchestrator
+    orch = settings.orchestrator
     st.write(
         {
             "approval gates": orch.gates,
@@ -77,7 +103,7 @@ def render() -> None:
         }
     )
 
-    st.divider()
-    st.subheader("Registered projects")
-    for project in container.projects.list_projects():
-        st.write(f"- **{project.name}** — `{project.root_path}`")
+    st.subheader("Architecture rules")
+    for rule in settings.architecture.rules:
+        st.write(f"- **{rule.name}** (under `{rule.applies_to or '/'}`): no "
+                 f"{', '.join(rule.forbidden_imports)}")

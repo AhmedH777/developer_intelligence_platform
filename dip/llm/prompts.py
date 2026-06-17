@@ -275,9 +275,18 @@ def build_plan_messages(context: ContextPackage) -> list[Message]:
             f"overrides them):\n{bullets}\n\n"
         )
 
+    skills_block = ""
+    if context.skills:
+        skills_block = (
+            "Repository skills (playbooks to follow when relevant):\n\n"
+            + "\n\n".join(context.skills)
+            + "\n\n"
+        )
+
     user = (
         f"Feature/bug request:\n{context.user_request}\n\n"
         f"{memory_block}"
+        f"{skills_block}"
         f"Repository evidence:\n\n{evidence}\n\n"
         "Produce an implementation plan as a JSON object with exactly this shape:\n"
         f"{PLAN_JSON_TEMPLATE}"

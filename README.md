@@ -100,15 +100,30 @@ This completes the general-purpose platform (M8 ML/RL extras are optional).
   workflows into a single autonomous agent without giving up the safety gates.
   Toggle it per task on the Tasks page.
 
+**Enhancements — repo-local data & first-class skills**
+
+- **Repo-local storage**: each registered repo keeps its own data in a gitignored
+  `<repo>/.dip/` store (index, tasks, memory, patches, jobs, logs), so an
+  agent's knowledge and history travel with the repository. A small cross-repo
+  **registry** (`~/.dip/registry.json`, override `DIP_REGISTRY_PATH`) tracks which
+  repos are known; the sidebar switches between them.
+- **First-class skills**: markdown skills in `<repo>/skills/*.md` are now
+  *retrieved by relevance and injected into the planner's context* (not just
+  displayed), so they actually shape plans.
+- **Per-repo config**: a committed `<repo>/.devintel.yaml` overrides architecture
+  rules, allowed commands, safety limits, model roles, or auto-pilot gates for
+  that repo specifically.
+
 ## Architecture
 
 ```
 ui/   ── Streamlit control plane (thin; calls services only)
 dip/  ── UI-agnostic backend package (no Streamlit imports)
-  core/         config, Pydantic domain models, ProjectService
-  repository/   scanner, ignore rules, AST extraction, search, indexing
-  core/         ... + TaskService, JobService, MemoryService
-  skills/       loader for repository-specific markdown skill files
+  core/         config, domain models, ProjectService, TaskService,
+                JobService, MemoryService, Registry (cross-repo index)
+  repository/   scanner, ignore rules, AST extraction, search, indexing,
+                architecture (import-graph rule checks)
+  skills/       loader + relevance retrieval for <repo>/skills/*.md playbooks
   llm/          LLMClient protocol + OpenAI-compatible client, router (per-role
                 models), prompts, structured-output helper
   workflows/    explore, plan, implement, verify, debug, review, repair,
@@ -116,7 +131,6 @@ dip/  ── UI-agnostic backend package (no Streamlit imports)
   context/      context compiler (explain / plan / implement evidence selection)
   tools/        safety, patch, diffing, commands, result_parsers,
                 traceback_parser
-  repository/   ... + architecture (import-graph rule checks)
   storage/      SQLite schema + typed data-access layer
   container.py  composition root (wires the service graph)
 ```
@@ -152,9 +166,11 @@ up on app restart.
 streamlit run ui/streamlit_app.py
 ```
 
-Then: **Settings** → register a repository (it indexes immediately) →
-**Repository** → pick a file → pick a symbol → **Explain selected symbol**.
-Expand *"Context sent"* to see exactly what the model received.
+Then: **Settings** → register a repository (it creates a gitignored
+`<repo>/.dip/` store and indexes immediately) → pick the active repository in the
+sidebar → **Repository** → pick a file → pick a symbol → **Explain selected
+symbol**. Expand *"Context sent"* to see exactly what the model received. Each
+repo's data lives in its own `.dip/`, so switching repos switches all state.
 
 To plan a change: **Tasks** → *New task* → describe the request → **Generate
 plan** → review the plan, its evidence (Context tab), and event history →
