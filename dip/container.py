@@ -11,6 +11,7 @@ import sqlite3
 
 from dip.context.compiler import ContextCompiler
 from dip.core.config import Settings, load_settings
+from dip.core.jobs import JobService
 from dip.core.projects import ProjectService
 from dip.core.tasks import TaskService
 from dip.llm.client import LLMClient, OpenAICompatibleClient
@@ -18,10 +19,12 @@ from dip.repository.index_service import IndexService
 from dip.repository.repository_service import RepositoryService
 from dip.storage.database import connect
 from dip.storage.repo import Store
+from dip.tools.commands import CommandRunner
 from dip.tools.patch import PatchService
 from dip.workflows.explore import ExploreWorkflow
 from dip.workflows.implement import ImplementWorkflow
 from dip.workflows.plan import PlanWorkflow
+from dip.workflows.verify import VerificationService
 
 
 class Container:
@@ -43,6 +46,11 @@ class Container:
             self.repository, char_budget=settings.llm.context_char_budget
         )
         self.patches = PatchService(settings.safety)
+        self.command_runner = CommandRunner(settings.commands)
+        self.jobs = JobService(self.store, self.command_runner, settings)
+        self.verification = VerificationService(
+            self.store, self.tasks, self.command_runner, settings
+        )
         self.explore = ExploreWorkflow(self.repository, self.compiler, self.llm)
         self.plan = PlanWorkflow(self.store, self.tasks, self.compiler, self.llm)
         self.implement = ImplementWorkflow(
@@ -52,6 +60,8 @@ class Container:
             self.patches,
             self.index,
             self.llm,
+            verification=self.verification,
+            block_on_failed_verification=settings.commands.block_completion_on_failed_verification,
         )
 
     @classmethod

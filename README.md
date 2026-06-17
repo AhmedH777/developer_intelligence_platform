@@ -37,8 +37,21 @@ This currently implements **Milestones 0–2**:
 - Apply is **transactional with a snapshot**, so any applied change can be rolled
   back to the exact prior state; the symbol index is refreshed after apply
 
-It does **not** yet run commands or use background workers — those are later
-milestones (verification/repair).
+**M4 — commands & verification**
+
+- A **controlled command runner**: structured `CommandSpec` (never a shell
+  string), allowlisted executables only, timeouts, and clean env
+- A **persistent job queue** for long-running commands — jobs run as OS
+  subprocesses tracked by a `JobService`, survive Streamlit reruns, stream to a
+  log file, and are **idempotent** (a rerun/double-click won't launch a duplicate)
+- A **verification pipeline** that runs cheapest-first over the files a patch
+  changed: Python syntax → ruff → mypy → targeted pytest, with structured,
+  persisted results; a missing tool degrades to `NOT_VERIFIED`, not a failure
+- **Failed verification blocks completion**: a task with a failing blocking check
+  can't be accepted without an explicit, audited override
+
+It does **not** yet include the debug/review workflows or bounded repair — those
+are later milestones.
 
 ## Architecture
 
@@ -47,12 +60,13 @@ ui/   ── Streamlit control plane (thin; calls services only)
 dip/  ── UI-agnostic backend package (no Streamlit imports)
   core/         config, Pydantic domain models, ProjectService
   repository/   scanner, ignore rules, AST extraction, search, indexing
-  core/         ... + TaskService (task state machine + event log)
+  core/         ... + TaskService, JobService (persistent job queue)
   llm/          LLMClient protocol + OpenAI-compatible client, prompts,
                 structured-output helper (JSON extraction + validation + repair)
   context/      context compiler (explain / plan / implement evidence selection)
-  tools/        safety (path validation), patch (apply/rollback), diffing
-  workflows/    explore, plan, implement (generate/apply/rollback a patch)
+  tools/        safety, patch (apply/rollback), diffing, commands (runner),
+                result_parsers (pytest/ruff/mypy)
+  workflows/    explore, plan, implement, verify (verification pipeline)
   storage/      SQLite schema + typed data-access layer
   container.py  composition root (wires the service graph)
 ```
@@ -97,8 +111,13 @@ plan** → review the plan, its evidence (Context tab), and event history →
 **Approve** or **Reject**.
 
 To make the change: with an approved plan, go to **Changes** → **Generate patch**
-→ review the per-file diff → **Apply patch** (snapshotted) → **Roll back** or
-**Accept**.
+→ review the per-file diff → **Apply patch** (snapshotted).
+
+To verify: after applying, open **Tests** → **Run verification** (syntax → lint →
+types → targeted tests). If blocking checks pass you can **Accept** on the Changes
+page; otherwise accept is blocked (or override explicitly). Use **Execution** to
+run an allowlisted command (e.g. the full test suite) as a background job with
+live logs.
 
 ## Test
 

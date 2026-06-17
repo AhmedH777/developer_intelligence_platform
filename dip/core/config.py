@@ -53,12 +53,24 @@ class SafetySettings(BaseModel):
     )
 
 
+class CommandSettings(BaseModel):
+    """Controlled-execution policy (the plan's §15.2)."""
+
+    allowed_executables: list[str] = Field(
+        default_factory=lambda: ["python", "python3", "pytest", "ruff", "mypy", "pyright"]
+    )
+    default_timeout_seconds: int = 300
+    # Block automatic task completion when verification fails.
+    block_completion_on_failed_verification: bool = True
+
+
 class Settings(BaseModel):
     """Top-level application settings."""
 
     storage_dir: Path = Field(default=Path(".dip"))
     llm: LLMSettings = Field(default_factory=LLMSettings)
     safety: SafetySettings = Field(default_factory=SafetySettings)
+    commands: CommandSettings = Field(default_factory=CommandSettings)
     default_excludes: list[str] = Field(default_factory=lambda: list(DEFAULT_EXCLUDES))
 
     @property

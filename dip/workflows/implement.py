@@ -37,6 +37,8 @@ class ImplementWorkflow:
         patches: PatchService,
         index: IndexService,
         llm: LLMClient,
+        verification=None,
+        block_on_failed_verification: bool = True,
     ) -> None:
         self._store = store
         self._tasks = tasks
@@ -44,6 +46,8 @@ class ImplementWorkflow:
         self._patches = patches
         self._index = index
         self._llm = llm
+        self._verification = verification
+        self._block_on_failed_verification = block_on_failed_verification
 
     def generate_patch(self, task_id: str) -> StoredPatchProposal:
         task = self._tasks.get_task(task_id)
@@ -153,9 +157,19 @@ class ImplementWorkflow:
         )
         self._index.index_project(task.project_id)
 
-    def accept(self, task_id: str):
-        """Mark an applied patch as accepted/done."""
+    def accept(self, task_id: str, override: bool = False):
+        """Mark an applied patch as accepted/done.
 
+        Blocked when the latest verification failed unless ``override`` is set
+        (the plan's "failed verification blocks automatic completion").
+        """
+
+        if self._block_on_failed_verification and not override and self._verification is not None:
+            latest = self._verification.latest(task_id)
+            if latest is not None and latest.status.value == "fail":
+                raise CompletionBlockedError(
+                    "Verification failed; resolve issues or override to accept anyway."
+                )
         return self._tasks.transition(task_id, TaskState.DONE, "Change accepted by user")
 
     def _project_root(self, project_id: str) -> str:
@@ -166,4 +180,8 @@ class ImplementWorkflow:
 
 
 class PatchGenerationError(RuntimeError):
+    pass
+
+
+class CompletionBlockedError(RuntimeError):
     pass

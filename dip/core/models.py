@@ -321,4 +321,101 @@ class PatchApplication(BaseModel):
     created_at: datetime = Field(default_factory=_now)
 
 
+# ----- Commands, jobs & verification (Milestone 4) --------------------------
+
+
+class CommandSpec(BaseModel):
+    """A structured command — never a raw shell string (the plan's §15.1)."""
+
+    executable: str
+    arguments: list[str] = Field(default_factory=list)
+    working_directory: str
+    timeout_seconds: int = 300
+
+    @property
+    def display(self) -> str:
+        return " ".join([self.executable, *self.arguments])
+
+
+class CommandResult(BaseModel):
+    exit_code: int | None
+    stdout: str
+    stderr: str
+    duration_seconds: float
+    timed_out: bool = False
+
+    @property
+    def ok(self) -> bool:
+        return self.exit_code == 0 and not self.timed_out
+
+
+class JobStatus(str, Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class Job(BaseModel):
+    id: str
+    project_id: str
+    job_type: str
+    idempotency_key: str
+    status: JobStatus = JobStatus.QUEUED
+    command: CommandSpec
+    log_path: str
+    exit_code: int | None = None
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+
+
+class Diagnostic(BaseModel):
+    """A single tool finding (lint error, type error, test failure)."""
+
+    tool: str
+    file_path: str | None = None
+    line: int | None = None
+    severity: str = "error"
+    code: str | None = None
+    message: str = ""
+
+
+class VerificationStatus(str, Enum):
+    PASS = "pass"
+    FAIL = "fail"
+    NOT_VERIFIED = "not_verified"  # tool unavailable / nothing to check
+    MANUAL_CHECK_REQUIRED = "manual_check_required"
+
+
+class VerificationStep(BaseModel):
+    name: str
+    command: str
+    status: VerificationStatus
+    duration_seconds: float = 0.0
+    exit_code: int | None = None
+    blocking: bool = True
+    diagnostics: list[Diagnostic] = Field(default_factory=list)
+    summary: str = ""
+
+
+class VerificationRun(BaseModel):
+    id: str
+    task_id: str
+    created_at: datetime = Field(default_factory=_now)
+    steps: list[VerificationStep] = Field(default_factory=list)
+
+    @property
+    def status(self) -> VerificationStatus:
+        if any(s.status == VerificationStatus.FAIL and s.blocking for s in self.steps):
+            return VerificationStatus.FAIL
+        if any(s.status == VerificationStatus.PASS for s in self.steps):
+            return VerificationStatus.PASS
+        return VerificationStatus.NOT_VERIFIED
+
+    @property
+    def passed(self) -> bool:
+        return self.status == VerificationStatus.PASS
+
+
 FileTreeNode.model_rebuild()

@@ -100,6 +100,27 @@ CREATE TABLE IF NOT EXISTS patch_applications (
     diff            TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS jobs (
+    id              TEXT PRIMARY KEY,
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    job_type        TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    status          TEXT NOT NULL,
+    command_json    TEXT NOT NULL,
+    log_path        TEXT NOT NULL,
+    exit_code       INTEGER,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS verification_runs (
+    id          TEXT PRIMARY KEY,
+    task_id     TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    created_at  TEXT NOT NULL,
+    status      TEXT NOT NULL,
+    steps_json  TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_files_project ON repository_files(project_id);
 CREATE INDEX IF NOT EXISTS idx_symbols_project ON repository_symbols(project_id);
 CREATE INDEX IF NOT EXISTS idx_symbols_file ON repository_symbols(file_id);
@@ -109,6 +130,9 @@ CREATE INDEX IF NOT EXISTS idx_events_task ON task_events(task_id);
 CREATE INDEX IF NOT EXISTS idx_plans_task ON plans(task_id);
 CREATE INDEX IF NOT EXISTS idx_proposals_task ON patch_proposals(task_id);
 CREATE INDEX IF NOT EXISTS idx_applications_task ON patch_applications(task_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_project ON jobs(project_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_idem ON jobs(idempotency_key);
+CREATE INDEX IF NOT EXISTS idx_verif_task ON verification_runs(task_id);
 """
 
 

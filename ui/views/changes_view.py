@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import streamlit as st
 
-from dip.core.models import StoredPatchProposal, Task, TaskState
+from dip.core.models import StoredPatchProposal, Task, TaskState, VerificationStatus
 from dip.tools.patch import PatchError
-from dip.workflows.implement import PatchGenerationError
+from dip.workflows.implement import CompletionBlockedError, PatchGenerationError
 from ui.state import get_active_project_id, get_container
 
 _CAN_GENERATE = {TaskState.PLAN_APPROVED, TaskState.ROLLED_BACK}
@@ -102,16 +102,26 @@ def _render_proposal(container, task: Task, proposal: StoredPatchProposal) -> No
                 st.rerun()
     elif task.state == TaskState.APPLIED:
         st.success("Patch applied.")
-        col1, col2 = st.columns(2)
+        verification = container.verification.latest(task.id)
+        if verification is None:
+            st.info("Run verification on the Tests page before accepting.")
+        elif verification.status == VerificationStatus.FAIL:
+            st.error("Verification failed — accept is blocked (override below if intentional).")
+        elif verification.status == VerificationStatus.PASS:
+            st.success("Verification passed.")
+
+        col1, col2, col3 = st.columns(3)
         with col1:
             if st.button("Accept change", type="primary"):
-                container.implement.accept(task.id)
-                st.rerun()
+                _accept(container, task, override=False)
         with col2:
             if st.button("↩️ Roll back"):
                 with st.spinner("Restoring files…"):
                     container.implement.rollback(task.id)
                 st.rerun()
+        with col3:
+            if st.button("Override & accept"):
+                _accept(container, task, override=True)
     elif task.state == TaskState.DONE:
         st.success("Change accepted. Task done.")
     elif task.state == TaskState.ROLLED_BACK:
@@ -128,4 +138,13 @@ def _apply(container, task: Task, proposal: StoredPatchProposal) -> None:
         except PatchError as exc:
             st.error(f"Apply blocked: {exc}")
             return
+    st.rerun()
+
+
+def _accept(container, task: Task, override: bool) -> None:
+    try:
+        container.implement.accept(task.id, override=override)
+    except CompletionBlockedError as exc:
+        st.error(str(exc))
+        return
     st.rerun()

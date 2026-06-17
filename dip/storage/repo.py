@@ -11,8 +11,11 @@ import sqlite3
 from datetime import datetime
 
 from dip.core.models import (
+    CommandSpec,
     ContextPackage,
     ImplementationPlan,
+    Job,
+    JobStatus,
     PatchApplication,
     PatchPreview,
     PatchProposal,
@@ -26,6 +29,9 @@ from dip.core.models import (
     Task,
     TaskEvent,
     TaskState,
+    VerificationRun,
+    VerificationStatus,
+    VerificationStep,
 )
 
 
@@ -319,6 +325,76 @@ class Store:
         ).fetchone()
         return _application_from_row(row) if row else None
 
+    # ----- jobs -------------------------------------------------------------
+    def insert_job(self, job: Job) -> None:
+        self._conn.execute(
+            "INSERT INTO jobs"
+            " (id, project_id, job_type, idempotency_key, status, command_json,"
+            "  log_path, exit_code, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                job.id,
+                job.project_id,
+                job.job_type,
+                job.idempotency_key,
+                job.status.value,
+                job.command.model_dump_json(),
+                job.log_path,
+                job.exit_code,
+                job.created_at.isoformat(),
+                job.updated_at.isoformat(),
+            ),
+        )
+        self._conn.commit()
+
+    def update_job(self, job_id: str, status: JobStatus, exit_code: int | None, updated_at: datetime) -> None:
+        self._conn.execute(
+            "UPDATE jobs SET status = ?, exit_code = ?, updated_at = ? WHERE id = ?",
+            (status.value, exit_code, updated_at.isoformat(), job_id),
+        )
+        self._conn.commit()
+
+    def get_job(self, job_id: str) -> Job | None:
+        row = self._conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        return _job_from_row(row) if row else None
+
+    def find_active_job(self, idempotency_key: str) -> Job | None:
+        row = self._conn.execute(
+            "SELECT * FROM jobs WHERE idempotency_key = ? AND status IN ('queued','running')"
+            " ORDER BY created_at DESC LIMIT 1",
+            (idempotency_key,),
+        ).fetchone()
+        return _job_from_row(row) if row else None
+
+    def list_jobs(self, project_id: str, limit: int = 50) -> list[Job]:
+        rows = self._conn.execute(
+            "SELECT * FROM jobs WHERE project_id = ? ORDER BY created_at DESC LIMIT ?",
+            (project_id, limit),
+        ).fetchall()
+        return [_job_from_row(r) for r in rows]
+
+    # ----- verification runs ------------------------------------------------
+    def insert_verification_run(self, run: VerificationRun) -> None:
+        self._conn.execute(
+            "INSERT INTO verification_runs (id, task_id, created_at, status, steps_json)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (
+                run.id,
+                run.task_id,
+                run.created_at.isoformat(),
+                run.status.value,
+                json.dumps([s.model_dump() for s in run.steps]),
+            ),
+        )
+        self._conn.commit()
+
+    def get_latest_verification(self, task_id: str) -> VerificationRun | None:
+        row = self._conn.execute(
+            "SELECT * FROM verification_runs WHERE task_id = ? ORDER BY created_at DESC LIMIT 1",
+            (task_id,),
+        ).fetchone()
+        return _verification_from_row(row) if row else None
+
 
 # ----- row mappers ----------------------------------------------------------
 def _project_from_row(row: sqlite3.Row) -> Project:
@@ -421,4 +497,29 @@ def _application_from_row(row: sqlite3.Row) -> PatchApplication:
         snapshot=json.loads(row["snapshot_json"]),
         diff=row["diff"],
         created_at=datetime.fromisoformat(row["created_at"]),
+    )
+
+
+def _job_from_row(row: sqlite3.Row) -> Job:
+    return Job(
+        id=row["id"],
+        project_id=row["project_id"],
+        job_type=row["job_type"],
+        idempotency_key=row["idempotency_key"],
+        status=JobStatus(row["status"]),
+        command=CommandSpec.model_validate_json(row["command_json"]),
+        log_path=row["log_path"],
+        exit_code=row["exit_code"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        updated_at=datetime.fromisoformat(row["updated_at"]),
+    )
+
+
+def _verification_from_row(row: sqlite3.Row) -> VerificationRun:
+    steps = [VerificationStep.model_validate(s) for s in json.loads(row["steps_json"])]
+    return VerificationRun(
+        id=row["id"],
+        task_id=row["task_id"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        steps=steps,
     )
