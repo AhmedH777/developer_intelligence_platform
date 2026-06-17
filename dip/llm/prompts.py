@@ -218,8 +218,17 @@ def build_plan_messages(context: ContextPackage) -> list[Message]:
         evidence_blocks.append(f"{header}\n```python\n{region.content}\n```")
     evidence = "\n\n".join(evidence_blocks) if evidence_blocks else "(no matching code found)"
 
+    memory_block = ""
+    if context.memory_items:
+        bullets = "\n".join(f"- {m}" for m in context.memory_items)
+        memory_block = (
+            "Project memory & conventions (honor these unless the request "
+            f"overrides them):\n{bullets}\n\n"
+        )
+
     user = (
         f"Feature/bug request:\n{context.user_request}\n\n"
+        f"{memory_block}"
         f"Repository evidence:\n\n{evidence}\n\n"
         "Produce an implementation plan as a JSON object with exactly this shape:\n"
         f"{PLAN_JSON_TEMPLATE}"

@@ -62,8 +62,19 @@ This currently implements **Milestones 0–2**:
   category, file, line range, explanation, recommendation), citing concrete
   files and lines
 
-It does **not** yet include memory/skills or bounded repair — those are later
-milestones.
+**M6 — memory & skills**
+
+- **Project memory**: durable, source-attributed knowledge (project facts,
+  architecture decisions, known failures, preferences, workflow rules) —
+  visible, editable, disable-able, and deletable; never stored silently
+- **Retrieval into context**: relevant memory is injected into the plan's
+  context package (by keyword overlap, with a boost for durable conventions) so
+  plans honor established decisions
+- **Repository skills**: markdown skill files (`skills/*.md` in the repo) are
+  loaded and displayed — human-authored, version-controlled task playbooks
+
+It does **not** yet include architecture checks or bounded repair — those are the
+last general milestone.
 
 ## Architecture
 
@@ -72,7 +83,8 @@ ui/   ── Streamlit control plane (thin; calls services only)
 dip/  ── UI-agnostic backend package (no Streamlit imports)
   core/         config, Pydantic domain models, ProjectService
   repository/   scanner, ignore rules, AST extraction, search, indexing
-  core/         ... + TaskService, JobService (persistent job queue)
+  core/         ... + TaskService, JobService, MemoryService
+  skills/       loader for repository-specific markdown skill files
   llm/          LLMClient protocol + OpenAI-compatible client, prompts,
                 structured-output helper (JSON extraction + validation + repair)
   context/      context compiler (explain / plan / implement evidence selection)
@@ -134,6 +146,10 @@ live logs.
 To review or debug: **Review** runs a structured review of the active task's
 latest patch; **Debug** takes a pasted traceback/failure, identifies the
 repository frames, and returns ranked hypotheses with a minimal fix.
+
+To curate knowledge: **Memory** lets you add/edit/disable durable project facts
+and decisions (which then inform later plans) and browse repository skill files
+under `skills/`.
 
 ## Test
 

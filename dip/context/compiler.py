@@ -86,13 +86,18 @@ class ContextCompiler:
         return package
 
     def build_plan_context(
-        self, project_id: str, request: str, max_regions: int = 6
+        self,
+        project_id: str,
+        request: str,
+        max_regions: int = 6,
+        memory_items: list[str] | None = None,
     ) -> ContextPackage:
         """Gather repository evidence relevant to a free-form feature/bug request.
 
         Implements the early steps of the plan's retrieval order (keyword +
         symbol-aware search). Each included region records why it was selected,
-        and inclusion stops at the character budget.
+        and inclusion stops at the character budget. Relevant project memory is
+        attached so durable conventions inform the plan.
         """
 
         notes: list[str] = []
@@ -143,6 +148,7 @@ class ContextCompiler:
             user_request=request,
             role="planner",
             source_regions=regions,
+            memory_items=memory_items or [],
             char_estimate=char_estimate,
             token_estimate=char_estimate // CHARS_PER_TOKEN,
             notes=notes,

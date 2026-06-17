@@ -22,6 +22,7 @@ from ui.views import (  # noqa: E402
     changes_view,
     debug_view,
     execution_view,
+    memory_view,
     repository_view,
     review_view,
     settings_view,
@@ -67,6 +68,7 @@ def _sidebar() -> str:
             "Tests",
             "Debug",
             "Execution",
+            "Memory",
             "Settings",
         ],
         index=0,
@@ -89,6 +91,8 @@ def main() -> None:
         debug_view.render()
     elif page == "Execution":
         execution_view.render()
+    elif page == "Memory":
+        memory_view.render()
     else:
         repository_view.render()
 

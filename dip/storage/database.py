@@ -135,6 +135,18 @@ CREATE TABLE IF NOT EXISTS review_runs (
     payload_json TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS memory_items (
+    id             TEXT PRIMARY KEY,
+    project_id     TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    category       TEXT NOT NULL,
+    content        TEXT NOT NULL,
+    source_task_id TEXT,
+    confidence     REAL NOT NULL DEFAULT 0.8,
+    enabled        INTEGER NOT NULL DEFAULT 1,
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_files_project ON repository_files(project_id);
 CREATE INDEX IF NOT EXISTS idx_symbols_project ON repository_symbols(project_id);
 CREATE INDEX IF NOT EXISTS idx_symbols_file ON repository_symbols(file_id);
@@ -149,6 +161,7 @@ CREATE INDEX IF NOT EXISTS idx_jobs_idem ON jobs(idempotency_key);
 CREATE INDEX IF NOT EXISTS idx_verif_task ON verification_runs(task_id);
 CREATE INDEX IF NOT EXISTS idx_debug_task ON debug_reports(task_id);
 CREATE INDEX IF NOT EXISTS idx_review_task ON review_runs(task_id);
+CREATE INDEX IF NOT EXISTS idx_memory_project ON memory_items(project_id);
 """
 
 

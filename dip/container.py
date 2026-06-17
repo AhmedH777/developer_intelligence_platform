@@ -12,8 +12,10 @@ import sqlite3
 from dip.context.compiler import ContextCompiler
 from dip.core.config import Settings, load_settings
 from dip.core.jobs import JobService
+from dip.core.memory import MemoryService
 from dip.core.projects import ProjectService
 from dip.core.tasks import TaskService
+from dip.skills.loader import SkillLoader
 from dip.llm.client import LLMClient, OpenAICompatibleClient
 from dip.repository.index_service import IndexService
 from dip.repository.repository_service import RepositoryService
@@ -43,6 +45,8 @@ class Container:
         self.index = IndexService(self.store, settings)
         self.repository = RepositoryService(self.store)
         self.tasks = TaskService(self.store)
+        self.memory = MemoryService(self.store)
+        self.skills = SkillLoader()
         self.llm: LLMClient = llm or OpenAICompatibleClient(settings.llm)
         self.compiler = ContextCompiler(
             self.repository, char_budget=settings.llm.context_char_budget
@@ -54,7 +58,7 @@ class Container:
             self.store, self.tasks, self.command_runner, settings
         )
         self.explore = ExploreWorkflow(self.repository, self.compiler, self.llm)
-        self.plan = PlanWorkflow(self.store, self.tasks, self.compiler, self.llm)
+        self.plan = PlanWorkflow(self.store, self.tasks, self.compiler, self.llm, memory=self.memory)
         self.implement = ImplementWorkflow(
             self.store,
             self.tasks,

@@ -16,6 +16,8 @@ from dip.core.models import (
     ImplementationPlan,
     Job,
     JobStatus,
+    MemoryCategory,
+    MemoryItem,
     PatchApplication,
     PatchPreview,
     PatchProposal,
@@ -429,6 +431,58 @@ class Store:
         ).fetchone()
         return StoredReview.model_validate_json(row["payload_json"]) if row else None
 
+    # ----- memory -----------------------------------------------------------
+    def insert_memory(self, item: MemoryItem) -> None:
+        self._conn.execute(
+            "INSERT INTO memory_items"
+            " (id, project_id, category, content, source_task_id, confidence, enabled,"
+            "  created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                item.id,
+                item.project_id,
+                item.category.value,
+                item.content,
+                item.source_task_id,
+                item.confidence,
+                1 if item.enabled else 0,
+                item.created_at.isoformat(),
+                item.updated_at.isoformat(),
+            ),
+        )
+        self._conn.commit()
+
+    def update_memory(self, item: MemoryItem) -> None:
+        self._conn.execute(
+            "UPDATE memory_items SET content = ?, confidence = ?, enabled = ?, updated_at = ?"
+            " WHERE id = ?",
+            (
+                item.content,
+                item.confidence,
+                1 if item.enabled else 0,
+                item.updated_at.isoformat(),
+                item.id,
+            ),
+        )
+        self._conn.commit()
+
+    def get_memory(self, item_id: str) -> MemoryItem | None:
+        row = self._conn.execute(
+            "SELECT * FROM memory_items WHERE id = ?", (item_id,)
+        ).fetchone()
+        return _memory_from_row(row) if row else None
+
+    def list_memory(self, project_id: str) -> list[MemoryItem]:
+        rows = self._conn.execute(
+            "SELECT * FROM memory_items WHERE project_id = ? ORDER BY created_at DESC",
+            (project_id,),
+        ).fetchall()
+        return [_memory_from_row(r) for r in rows]
+
+    def delete_memory(self, item_id: str) -> None:
+        self._conn.execute("DELETE FROM memory_items WHERE id = ?", (item_id,))
+        self._conn.commit()
+
 
 # ----- row mappers ----------------------------------------------------------
 def _project_from_row(row: sqlite3.Row) -> Project:
@@ -556,4 +610,18 @@ def _verification_from_row(row: sqlite3.Row) -> VerificationRun:
         task_id=row["task_id"],
         created_at=datetime.fromisoformat(row["created_at"]),
         steps=steps,
+    )
+
+
+def _memory_from_row(row: sqlite3.Row) -> MemoryItem:
+    return MemoryItem(
+        id=row["id"],
+        project_id=row["project_id"],
+        category=MemoryCategory(row["category"]),
+        content=row["content"],
+        source_task_id=row["source_task_id"],
+        confidence=row["confidence"],
+        enabled=bool(row["enabled"]),
+        created_at=datetime.fromisoformat(row["created_at"]),
+        updated_at=datetime.fromisoformat(row["updated_at"]),
     )

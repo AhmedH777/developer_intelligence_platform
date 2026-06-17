@@ -33,11 +33,13 @@ class PlanWorkflow:
         tasks: TaskService,
         compiler: ContextCompiler,
         llm: LLMClient,
+        memory=None,
     ) -> None:
         self._store = store
         self._tasks = tasks
         self._compiler = compiler
         self._llm = llm
+        self._memory = memory
 
     def generate_plan(self, task_id: str) -> StoredPlan:
         task = self._tasks.get_task(task_id)
@@ -46,12 +48,17 @@ class PlanWorkflow:
         if task.state in (TaskState.NEW, TaskState.PLAN_REJECTED, TaskState.FAILED):
             self._tasks.transition(task_id, TaskState.INVESTIGATING, "Investigating repository")
 
-        context = self._compiler.build_plan_context(task.project_id, task.request)
+        memory_labels: list[str] = []
+        if self._memory is not None:
+            memory_labels = [m.label for m in self._memory.retrieve(task.project_id, task.request)]
+        context = self._compiler.build_plan_context(
+            task.project_id, task.request, memory_items=memory_labels
+        )
         self._tasks.record_event(
             task_id,
             "context_compiled",
-            f"Compiled {len(context.source_regions)} evidence region(s), "
-            f"~{context.token_estimate} tokens.",
+            f"Compiled {len(context.source_regions)} evidence region(s) and "
+            f"{len(memory_labels)} memory item(s), ~{context.token_estimate} tokens.",
         )
 
         messages = build_plan_messages(context)

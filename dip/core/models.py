@@ -105,6 +105,7 @@ class ContextPackage(BaseModel):
     user_request: str
     role: str = "explainer"
     source_regions: list[SourceRegion] = Field(default_factory=list)
+    memory_items: list[str] = Field(default_factory=list)
     char_estimate: int = 0
     token_estimate: int = 0
     notes: list[str] = Field(default_factory=list)
@@ -492,6 +493,46 @@ class StoredReview(BaseModel):
     created_at: datetime = Field(default_factory=_now)
     raw_response: str = ""
     repaired: bool = False
+
+
+# ----- Memory & skills (Milestone 6) ----------------------------------------
+
+
+class MemoryCategory(str, Enum):
+    PROJECT_FACT = "project_fact"
+    ARCHITECTURE_DECISION = "architecture_decision"
+    KNOWN_FAILURE = "known_failure"
+    USER_PREFERENCE = "user_preference"
+    WORKFLOW_RULE = "workflow_rule"
+    EXPERIMENT_FINDING = "experiment_finding"
+
+
+class MemoryItem(BaseModel):
+    """A durable, source-attributed piece of project knowledge (the plan's §16)."""
+
+    id: str
+    project_id: str
+    category: MemoryCategory
+    content: str
+    source_task_id: str | None = None
+    confidence: float = 0.8
+    enabled: bool = True
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+
+    @property
+    def label(self) -> str:
+        return f"[{self.category.value}] {self.content}"
+
+
+class Skill(BaseModel):
+    """A repository-specific skill loaded from a local markdown file (§16.4)."""
+
+    name: str
+    path: str
+    purpose: str = ""
+    sections: dict[str, str] = Field(default_factory=dict)
+    raw: str = ""
 
 
 FileTreeNode.model_rebuild()
