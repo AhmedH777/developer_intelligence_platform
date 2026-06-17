@@ -1,0 +1,34 @@
+# Developer Intelligence Platform — example configuration.
+# Copy to config/settings.yaml (gitignored) or set the matching DIP_* env vars.
+
+# Where the SQLite database and artifacts live.
+storage_dir: ".dip"
+
+llm:
+  # OpenAI-compatible local endpoint. Examples:
+  #   Ollama        -> http://localhost:11434/v1
+  #   LM Studio     -> http://localhost:1234/v1
+  #   llama.cpp     -> http://localhost:8080/v1
+  base_url: "http://localhost:11434/v1"
+  api_key: "not-needed-for-local"
+  model: "qwen2.5-coder"
+  temperature: 0.1
+  max_tokens: 1024
+  # Soft budget used by the context compiler (characters, ~4 chars/token).
+  context_char_budget: 24000
+
+# Directories never scanned/indexed (in addition to .gitignore).
+default_excludes:
+  - ".git"
+  - ".venv"
+  - "venv"
+  - "__pycache__"
+  - ".pytest_cache"
+  - ".mypy_cache"
+  - ".ruff_cache"
+  - "build"
+  - "dist"
+  - "node_modules"
+  - "data"
+  - "checkpoints"
+  - ".dip"
