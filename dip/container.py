@@ -12,12 +12,14 @@ import sqlite3
 from dip.context.compiler import ContextCompiler
 from dip.core.config import Settings, load_settings
 from dip.core.projects import ProjectService
+from dip.core.tasks import TaskService
 from dip.llm.client import LLMClient, OpenAICompatibleClient
 from dip.repository.index_service import IndexService
 from dip.repository.repository_service import RepositoryService
 from dip.storage.database import connect
 from dip.storage.repo import Store
 from dip.workflows.explore import ExploreWorkflow
+from dip.workflows.plan import PlanWorkflow
 
 
 class Container:
@@ -33,11 +35,13 @@ class Container:
         self.projects = ProjectService(self.store)
         self.index = IndexService(self.store, settings)
         self.repository = RepositoryService(self.store)
+        self.tasks = TaskService(self.store)
         self.llm: LLMClient = llm or OpenAICompatibleClient(settings.llm)
         self.compiler = ContextCompiler(
             self.repository, char_budget=settings.llm.context_char_budget
         )
         self.explore = ExploreWorkflow(self.repository, self.compiler, self.llm)
+        self.plan = PlanWorkflow(self.store, self.tasks, self.compiler, self.llm)
 
     @classmethod
     def create(

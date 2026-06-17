@@ -9,11 +9,24 @@ the UI can show exactly what was sent and how large it was.
 
 from __future__ import annotations
 
+import re
+
 from dip.core.models import ContextPackage, SourceRegion, Symbol
 from dip.repository.repository_service import RepositoryService
 
 # Rough heuristic: ~4 characters per token for English + code.
 CHARS_PER_TOKEN = 4
+
+# Common words that should not drive symbol search.
+_STOPWORDS = {
+    "the", "and", "for", "with", "that", "this", "from", "into", "when", "then",
+    "add", "fix", "make", "use", "using", "should", "would", "could", "want",
+    "need", "please", "implement", "support", "change", "update", "create",
+    "a", "an", "of", "to", "in", "on", "is", "it", "be", "as", "by", "or", "we",
+    "function", "method", "class", "file", "code", "test", "tests",
+}
+
+_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
 
 
 class ContextCompiler:
@@ -71,3 +84,77 @@ class ContextCompiler:
             notes=notes,
         )
         return package
+
+    def build_plan_context(
+        self, project_id: str, request: str, max_regions: int = 6
+    ) -> ContextPackage:
+        """Gather repository evidence relevant to a free-form feature/bug request.
+
+        Implements the early steps of the plan's retrieval order (keyword +
+        symbol-aware search). Each included region records why it was selected,
+        and inclusion stops at the character budget.
+        """
+
+        notes: list[str] = []
+        keywords = self._keywords(request)
+        if not keywords:
+            notes.append("No specific identifiers detected in the request.")
+
+        # Best search hit per symbol across all keywords.
+        best: dict[str, tuple[float, str, Symbol]] = {}
+        for keyword in keywords:
+            for result in self._repo.search(project_id, keyword, limit=10):
+                if result.symbol is None:
+                    continue
+                sym = result.symbol
+                prior = best.get(sym.id)
+                if prior is None or result.score > prior[0]:
+                    best[sym.id] = (result.score, f"matches '{keyword}' ({result.reason})", sym)
+
+        ranked = sorted(best.values(), key=lambda t: -t[0])
+
+        regions: list[SourceRegion] = []
+        used_chars = 0
+        for score, reason, sym in ranked:
+            if len(regions) >= max_regions:
+                break
+            src = self._repo.read_symbol_source(project_id, sym)
+            if used_chars + len(src) > self._char_budget:
+                notes.append(f"Stopped adding evidence at the context budget ({self._char_budget} chars).")
+                break
+            regions.append(
+                SourceRegion(
+                    relative_path=sym.relative_path,
+                    symbol=sym.qualified_name,
+                    start_line=sym.start_line,
+                    end_line=sym.end_line,
+                    content=src,
+                    kind=sym.kind.value,
+                    reason=reason,
+                )
+            )
+            used_chars += len(src)
+
+        if not regions:
+            notes.append("No matching symbols found; the plan will rely on the request alone.")
+
+        char_estimate = sum(len(r.content) for r in regions)
+        return ContextPackage(
+            user_request=request,
+            role="planner",
+            source_regions=regions,
+            char_estimate=char_estimate,
+            token_estimate=char_estimate // CHARS_PER_TOKEN,
+            notes=notes,
+        )
+
+    @staticmethod
+    def _keywords(request: str) -> list[str]:
+        seen: list[str] = []
+        for match in _TOKEN_RE.findall(request):
+            lowered = match.lower()
+            if lowered in _STOPWORDS:
+                continue
+            if match not in seen:
+                seen.append(match)
+        return seen

@@ -6,14 +6,22 @@ codebase never touches raw rows.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import datetime
 
 from dip.core.models import (
+    ContextPackage,
+    ImplementationPlan,
+    PlanGrounding,
     Project,
     RepositoryFile,
+    StoredPlan,
     Symbol,
     SymbolKind,
+    Task,
+    TaskEvent,
+    TaskState,
 )
 
 
@@ -154,6 +162,92 @@ class Store:
         ).fetchone()
         return int(row["n"])
 
+    # ----- tasks ------------------------------------------------------------
+    def insert_task(self, task: Task) -> None:
+        self._conn.execute(
+            "INSERT INTO tasks (id, project_id, title, request, state, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                task.id,
+                task.project_id,
+                task.title,
+                task.request,
+                task.state.value,
+                task.created_at.isoformat(),
+                task.updated_at.isoformat(),
+            ),
+        )
+        self._conn.commit()
+
+    def update_task_state(self, task_id: str, state: TaskState, updated_at: datetime) -> None:
+        self._conn.execute(
+            "UPDATE tasks SET state = ?, updated_at = ? WHERE id = ?",
+            (state.value, updated_at.isoformat(), task_id),
+        )
+        self._conn.commit()
+
+    def get_task(self, task_id: str) -> Task | None:
+        row = self._conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        return _task_from_row(row) if row else None
+
+    def list_tasks(self, project_id: str) -> list[Task]:
+        rows = self._conn.execute(
+            "SELECT * FROM tasks WHERE project_id = ? ORDER BY created_at DESC",
+            (project_id,),
+        ).fetchall()
+        return [_task_from_row(r) for r in rows]
+
+    # ----- task events ------------------------------------------------------
+    def insert_event(self, event: TaskEvent) -> None:
+        self._conn.execute(
+            "INSERT INTO task_events (id, task_id, created_at, event_type, message, data)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                event.id,
+                event.task_id,
+                event.created_at.isoformat(),
+                event.event_type,
+                event.message,
+                json.dumps(event.data),
+            ),
+        )
+        self._conn.commit()
+
+    def list_events(self, task_id: str) -> list[TaskEvent]:
+        rows = self._conn.execute(
+            "SELECT * FROM task_events WHERE task_id = ? ORDER BY created_at",
+            (task_id,),
+        ).fetchall()
+        return [_event_from_row(r) for r in rows]
+
+    # ----- plans ------------------------------------------------------------
+    def insert_plan(self, plan: StoredPlan) -> None:
+        self._conn.execute(
+            "INSERT INTO plans"
+            " (id, task_id, created_at, model, repaired, plan_json, grounding_json,"
+            "  context_json, raw_response)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                plan.id,
+                plan.task_id,
+                plan.created_at.isoformat(),
+                plan.model,
+                1 if plan.repaired else 0,
+                plan.plan.model_dump_json(),
+                plan.grounding.model_dump_json(),
+                plan.context.model_dump_json(),
+                plan.raw_response,
+            ),
+        )
+        self._conn.commit()
+
+    def get_latest_plan(self, task_id: str) -> StoredPlan | None:
+        row = self._conn.execute(
+            "SELECT * FROM plans WHERE task_id = ? ORDER BY created_at DESC LIMIT 1",
+            (task_id,),
+        ).fetchone()
+        return _plan_from_row(row) if row else None
+
 
 # ----- row mappers ----------------------------------------------------------
 def _project_from_row(row: sqlite3.Row) -> Project:
@@ -192,4 +286,41 @@ def _symbol_from_row(row: sqlite3.Row) -> Symbol:
         signature=row["signature"],
         docstring=row["docstring"],
         parent_symbol_id=row["parent_symbol_id"],
+    )
+
+
+def _task_from_row(row: sqlite3.Row) -> Task:
+    return Task(
+        id=row["id"],
+        project_id=row["project_id"],
+        title=row["title"],
+        request=row["request"],
+        state=TaskState(row["state"]),
+        created_at=datetime.fromisoformat(row["created_at"]),
+        updated_at=datetime.fromisoformat(row["updated_at"]),
+    )
+
+
+def _event_from_row(row: sqlite3.Row) -> TaskEvent:
+    return TaskEvent(
+        id=row["id"],
+        task_id=row["task_id"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        event_type=row["event_type"],
+        message=row["message"],
+        data=json.loads(row["data"]),
+    )
+
+
+def _plan_from_row(row: sqlite3.Row) -> StoredPlan:
+    return StoredPlan(
+        id=row["id"],
+        task_id=row["task_id"],
+        plan=ImplementationPlan.model_validate_json(row["plan_json"]),
+        grounding=PlanGrounding.model_validate_json(row["grounding_json"]),
+        context=ContextPackage.model_validate_json(row["context_json"]),
+        model=row["model"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        raw_response=row["raw_response"],
+        repaired=bool(row["repaired"]),
     )

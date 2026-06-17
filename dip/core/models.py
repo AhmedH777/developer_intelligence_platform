@@ -129,4 +129,96 @@ class Explanation(BaseModel):
     raw_response: dict[str, Any] = Field(default_factory=dict)
 
 
+# ----- Tasks & planning (Milestone 2) ---------------------------------------
+
+
+class TaskState(str, Enum):
+    NEW = "new"
+    INVESTIGATING = "investigating"
+    PLANNED = "planned"  # plan generated, awaiting user approval
+    PLAN_APPROVED = "plan_approved"
+    PLAN_REJECTED = "plan_rejected"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
+# Allowed state transitions. Patch/verify states arrive in later milestones.
+TASK_TRANSITIONS: dict[TaskState, set[TaskState]] = {
+    TaskState.NEW: {TaskState.INVESTIGATING, TaskState.CANCELLED},
+    TaskState.INVESTIGATING: {TaskState.PLANNED, TaskState.FAILED, TaskState.CANCELLED},
+    TaskState.PLANNED: {
+        TaskState.PLAN_APPROVED,
+        TaskState.PLAN_REJECTED,
+        TaskState.CANCELLED,
+    },
+    TaskState.PLAN_REJECTED: {TaskState.INVESTIGATING, TaskState.CANCELLED},
+    TaskState.PLAN_APPROVED: {TaskState.CANCELLED},
+    TaskState.FAILED: {TaskState.INVESTIGATING, TaskState.CANCELLED},
+    TaskState.CANCELLED: set(),
+}
+
+
+class Task(BaseModel):
+    id: str
+    project_id: str
+    title: str
+    request: str
+    state: TaskState = TaskState.NEW
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+
+
+class TaskEvent(BaseModel):
+    id: str
+    task_id: str
+    created_at: datetime = Field(default_factory=_now)
+    event_type: str
+    message: str
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class PlanFileRef(BaseModel):
+    path: str
+    reason: str = ""
+    # Set during grounding validation: does this path exist in the index?
+    exists: bool | None = None
+
+
+class ImplementationPlan(BaseModel):
+    """Structured plan the model must return (the plan's §13.2 shape)."""
+
+    goal: str
+    acceptance_criteria: list[str] = Field(default_factory=list)
+    relevant_architecture: str = ""
+    files_to_inspect: list[PlanFileRef] = Field(default_factory=list)
+    files_likely_to_change: list[PlanFileRef] = Field(default_factory=list)
+    tests_to_add: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+    open_questions: list[str] = Field(default_factory=list)
+
+
+class PlanGrounding(BaseModel):
+    """Which cited files actually exist in the indexed repository."""
+
+    grounded_paths: list[str] = Field(default_factory=list)
+    ungrounded_paths: list[str] = Field(default_factory=list)
+
+    @property
+    def all_grounded(self) -> bool:
+        return not self.ungrounded_paths
+
+
+class StoredPlan(BaseModel):
+    id: str
+    task_id: str
+    plan: ImplementationPlan
+    grounding: PlanGrounding
+    context: ContextPackage
+    model: str
+    created_at: datetime = Field(default_factory=_now)
+    raw_response: str = ""
+    repaired: bool = False
+
+
 FileTreeNode.model_rebuild()

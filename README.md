@@ -4,7 +4,9 @@ An offline, repository-grounded local coding assistant. Deterministic Python
 tools handle parsing, search, and persistence; a **local** OpenAI-compatible LLM
 (e.g. Qwen-Coder, GPT-OSS via Ollama / LM Studio / llama.cpp) handles reasoning.
 
-This is **Milestone 0 + 1 — the read-only repository assistant**. It can:
+This currently implements **Milestones 0–2**:
+
+**M0–M1 — read-only repository assistant**
 
 - Register a local Python repository
 - Scan it (respecting `.gitignore` + default excludes) and extract symbols via AST
@@ -13,9 +15,19 @@ This is **Milestone 0 + 1 — the read-only repository assistant**. It can:
 - Select a symbol and get a grounded, evidence-linked explanation from a local model
 - See **exactly** which source was sent to the model (the context package)
 
+**M2 — persistent tasks + planning**
+
+- Create a persistent task from a feature request or bug report
+- Generate a **structured, grounded implementation plan** (goal, acceptance
+  criteria, files to inspect/change, tests, risks, assumptions, open questions)
+- Plans are validated against a Pydantic schema with one repair attempt, and
+  cited files are checked against the index (hallucinated paths are flagged)
+- Approve or reject the plan; every state change and model call is recorded as a
+  task event (full audit trail)
+
 It does **not** yet modify files, run commands, or use background workers — those
-are later milestones (see `docs`/the plan). Patch generation, when added, will use
-**search/replace blocks** rather than unified diffs.
+are later milestones. Patch generation, when added, will use **search/replace
+blocks** rather than unified diffs.
 
 ## Architecture
 
@@ -24,9 +36,11 @@ ui/   ── Streamlit control plane (thin; calls services only)
 dip/  ── UI-agnostic backend package (no Streamlit imports)
   core/         config, Pydantic domain models, ProjectService
   repository/   scanner, ignore rules, AST extraction, search, indexing
-  llm/          LLMClient protocol + OpenAI-compatible client, prompts
-  context/      context compiler (what evidence the model sees)
-  workflows/    explore workflow (explain a symbol)
+  core/         ... + TaskService (task state machine + event log)
+  llm/          LLMClient protocol + OpenAI-compatible client, prompts,
+                structured-output helper (JSON extraction + validation + repair)
+  context/      context compiler (explain + plan evidence selection)
+  workflows/    explore (explain a symbol), plan (grounded implementation plan)
   storage/      SQLite schema + typed data-access layer
   container.py  composition root (wires the service graph)
 ```
@@ -65,6 +79,10 @@ streamlit run ui/streamlit_app.py
 Then: **Settings** → register a repository (it indexes immediately) →
 **Repository** → pick a file → pick a symbol → **Explain selected symbol**.
 Expand *"Context sent"* to see exactly what the model received.
+
+To plan a change: **Tasks** → *New task* → describe the request → **Generate
+plan** → review the plan, its evidence (Context tab), and event history →
+**Approve** or **Reject**.
 
 ## Test
 
