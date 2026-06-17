@@ -48,8 +48,31 @@ class SafetySettings(BaseModel):
 
     require_patch_approval: bool = True
     max_modified_files: int = 8
+    max_repair_attempts: int = 2
     protected_paths: list[str] = Field(
         default_factory=lambda: [".git", ".env", "secrets"]
+    )
+
+
+class ArchitectureRule(BaseModel):
+    """A forbidden-import rule over a subtree of the repository."""
+
+    name: str
+    forbidden_imports: list[str] = Field(default_factory=list)
+    applies_to: str = ""  # path prefix the rule applies to ("" = whole repo)
+    description: str = ""
+
+
+class ArchitectureSettings(BaseModel):
+    rules: list[ArchitectureRule] = Field(
+        default_factory=lambda: [
+            ArchitectureRule(
+                name="ui-agnostic-backend",
+                forbidden_imports=["streamlit"],
+                applies_to="dip/",
+                description="Backend code under dip/ must not import Streamlit.",
+            )
+        ]
     )
 
 
@@ -71,6 +94,7 @@ class Settings(BaseModel):
     llm: LLMSettings = Field(default_factory=LLMSettings)
     safety: SafetySettings = Field(default_factory=SafetySettings)
     commands: CommandSettings = Field(default_factory=CommandSettings)
+    architecture: ArchitectureSettings = Field(default_factory=ArchitectureSettings)
     default_excludes: list[str] = Field(default_factory=lambda: list(DEFAULT_EXCLUDES))
 
     @property

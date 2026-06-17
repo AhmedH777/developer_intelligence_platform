@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
 from datetime import datetime
 
 from dip.core.models import (
@@ -80,15 +81,33 @@ class Store:
 
     # ----- files & symbols (index lifecycle) --------------------------------
     def clear_index(self, project_id: str) -> None:
-        """Remove all indexed files/symbols for a project before re-indexing."""
+        """Remove all indexed files/symbols/imports for a project before re-indexing."""
 
         self._conn.execute(
             "DELETE FROM repository_symbols WHERE project_id = ?", (project_id,)
         )
         self._conn.execute(
+            "DELETE FROM repository_imports WHERE project_id = ?", (project_id,)
+        )
+        self._conn.execute(
             "DELETE FROM repository_files WHERE project_id = ?", (project_id,)
         )
         self._conn.commit()
+
+    def insert_imports(self, project_id: str, file_id: str, relative_path: str, modules: list[str]) -> None:
+        self._conn.executemany(
+            "INSERT INTO repository_imports (id, project_id, file_id, relative_path, module)"
+            " VALUES (?, ?, ?, ?, ?)",
+            [(str(uuid.uuid4()), project_id, file_id, relative_path, m) for m in modules],
+        )
+
+    def list_imports(self, project_id: str) -> list[tuple[str, str]]:
+        rows = self._conn.execute(
+            "SELECT relative_path, module FROM repository_imports WHERE project_id = ?"
+            " ORDER BY relative_path",
+            (project_id,),
+        ).fetchall()
+        return [(r["relative_path"], r["module"]) for r in rows]
 
     def insert_file(self, file: RepositoryFile) -> None:
         self._conn.execute(

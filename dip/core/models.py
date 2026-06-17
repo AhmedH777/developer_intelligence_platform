@@ -535,4 +535,38 @@ class Skill(BaseModel):
     raw: str = ""
 
 
+# ----- Architecture checks & bounded repair (Milestone 7) -------------------
+
+
+class ArchitectureViolation(BaseModel):
+    rule_name: str
+    file_path: str
+    imported_module: str
+    description: str = ""
+
+
+class RepairProposal(BaseModel):
+    """A repair patch — like a PatchProposal but carries an explicit hypothesis."""
+
+    hypothesis: str
+    summary: str = ""
+    edits: list[SearchReplaceEdit] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+
+
+class RepairAttempt(BaseModel):
+    attempt: int
+    hypothesis: str
+    applied: bool
+    verification_status: str
+    note: str = ""
+
+
+class RepairResult(BaseModel):
+    task_id: str
+    status: Literal["fixed", "exhausted", "stopped", "needs_approval", "failed"]
+    message: str = ""
+    attempts: list[RepairAttempt] = Field(default_factory=list)
+
+
 FileTreeNode.model_rebuild()

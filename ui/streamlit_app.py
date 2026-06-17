@@ -19,6 +19,7 @@ import streamlit as st  # noqa: E402
 
 from ui.state import get_active_project_id, get_container  # noqa: E402
 from ui.views import (  # noqa: E402
+    architecture_view,
     changes_view,
     debug_view,
     execution_view,
@@ -68,6 +69,7 @@ def _sidebar() -> str:
             "Tests",
             "Debug",
             "Execution",
+            "Architecture",
             "Memory",
             "Settings",
         ],
@@ -91,6 +93,8 @@ def main() -> None:
         debug_view.render()
     elif page == "Execution":
         execution_view.render()
+    elif page == "Architecture":
+        architecture_view.render()
     elif page == "Memory":
         memory_view.render()
     else:

@@ -147,6 +147,15 @@ CREATE TABLE IF NOT EXISTS memory_items (
     updated_at     TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS repository_imports (
+    id            TEXT PRIMARY KEY,
+    project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    file_id       TEXT NOT NULL REFERENCES repository_files(id) ON DELETE CASCADE,
+    relative_path TEXT NOT NULL,
+    module        TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_imports_project ON repository_imports(project_id);
 CREATE INDEX IF NOT EXISTS idx_files_project ON repository_files(project_id);
 CREATE INDEX IF NOT EXISTS idx_symbols_project ON repository_symbols(project_id);
 CREATE INDEX IF NOT EXISTS idx_symbols_file ON repository_symbols(file_id);

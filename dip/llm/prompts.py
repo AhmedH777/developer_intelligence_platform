@@ -206,6 +206,55 @@ def build_review_messages(context: ContextPackage) -> list[Message]:
     return [Message(role="system", content=REVIEW_SYSTEM), Message(role="user", content=user)]
 
 
+REPAIR_SYSTEM = (
+    "You are fixing a failing change. You are given the current file content and "
+    "the verification failure. Propose the smallest search/replace edits that "
+    "make the checks pass.\n"
+    "Rules:\n"
+    "- State a clear `hypothesis` for the root cause. It MUST be different from "
+    "any previously-tried hypothesis listed.\n"
+    "- `search` text must be copied verbatim from the current content and be "
+    "unique in its file.\n"
+    "- Do not weaken or delete tests. Do not install dependencies. Keep the change "
+    "minimal.\n"
+    "- Respond with a single JSON object only — no prose, no markdown fences."
+)
+
+REPAIR_JSON_TEMPLATE = """{
+  "hypothesis": "root-cause hypothesis (must be new)",
+  "summary": "what this fix does",
+  "edits": [{"path": "pkg/module.py", "search": "exact text", "replace": "new text"}],
+  "risks": ["risk"]
+}"""
+
+
+def build_repair_messages(
+    context: ContextPackage, failure_text: str, previous_hypotheses: list[str]
+) -> list[Message]:
+    evidence_blocks: list[str] = []
+    for region in context.source_regions:
+        header = f"File: {region.relative_path} (current content, {region.end_line} lines)"
+        evidence_blocks.append(f"{header}\n```python\n{region.content}\n```")
+    evidence = "\n\n".join(evidence_blocks) if evidence_blocks else "(no files provided)"
+
+    prior = (
+        "Previously-tried hypotheses (do not repeat):\n"
+        + "\n".join(f"- {h}" for h in previous_hypotheses)
+        + "\n\n"
+        if previous_hypotheses
+        else ""
+    )
+    user = (
+        f"Original request:\n{context.user_request}\n\n"
+        f"Verification failure:\n{failure_text}\n\n"
+        f"{prior}"
+        f"Current file content:\n\n{evidence}\n\n"
+        "Return a repair as a JSON object with exactly this shape:\n"
+        f"{REPAIR_JSON_TEMPLATE}"
+    )
+    return [Message(role="system", content=REPAIR_SYSTEM), Message(role="user", content=user)]
+
+
 def build_plan_messages(context: ContextPackage) -> list[Message]:
     evidence_blocks: list[str] = []
     for region in context.source_regions:

@@ -73,8 +73,20 @@ This currently implements **Milestones 0–2**:
 - **Repository skills**: markdown skill files (`skills/*.md` in the repo) are
   loaded and displayed — human-authored, version-controlled task playbooks
 
-It does **not** yet include architecture checks or bounded repair — those are the
-last general milestone.
+**M7 — architecture checks & bounded repair**
+
+- Imports are indexed; **configurable architecture rules** (e.g. "code under
+  `dip/` must not import `streamlit`") are checked project-wide on the
+  Architecture page and as a **blocking verification step** on a patch's changed
+  files, so violations surface before completion
+- **Bounded auto-repair**: when verification fails, a capped loop proposes
+  search/replace fixes and re-verifies. Guardrails: a hard attempt cap, a **new
+  hypothesis required each attempt**, stop on repeated/oscillating failures,
+  protected paths enforced, **scope-expansion and test-weakening require
+  approval**, and no dependency installation. Every attempt is snapshotted and
+  reversible.
+
+This completes the general-purpose platform (M8 ML/RL extras are optional).
 
 ## Architecture
 
@@ -90,7 +102,8 @@ dip/  ── UI-agnostic backend package (no Streamlit imports)
   context/      context compiler (explain / plan / implement evidence selection)
   tools/        safety, patch, diffing, commands, result_parsers,
                 traceback_parser
-  workflows/    explore, plan, implement, verify, debug, review
+  repository/   ... + architecture (import-graph rule checks)
+  workflows/    explore, plan, implement, verify, debug, review, repair
   storage/      SQLite schema + typed data-access layer
   container.py  composition root (wires the service graph)
 ```

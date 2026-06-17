@@ -17,6 +17,7 @@ from dip.core.projects import ProjectService
 from dip.core.tasks import TaskService
 from dip.skills.loader import SkillLoader
 from dip.llm.client import LLMClient, OpenAICompatibleClient
+from dip.repository.architecture import ArchitectureService
 from dip.repository.index_service import IndexService
 from dip.repository.repository_service import RepositoryService
 from dip.storage.database import connect
@@ -27,6 +28,7 @@ from dip.workflows.debug import DebugWorkflow
 from dip.workflows.explore import ExploreWorkflow
 from dip.workflows.implement import ImplementWorkflow
 from dip.workflows.plan import PlanWorkflow
+from dip.workflows.repair import RepairWorkflow
 from dip.workflows.review import ReviewWorkflow
 from dip.workflows.verify import VerificationService
 
@@ -54,8 +56,9 @@ class Container:
         self.patches = PatchService(settings.safety)
         self.command_runner = CommandRunner(settings.commands)
         self.jobs = JobService(self.store, self.command_runner, settings)
+        self.architecture = ArchitectureService(self.store, settings.architecture)
         self.verification = VerificationService(
-            self.store, self.tasks, self.command_runner, settings
+            self.store, self.tasks, self.command_runner, settings, architecture=self.architecture
         )
         self.explore = ExploreWorkflow(self.repository, self.compiler, self.llm)
         self.plan = PlanWorkflow(self.store, self.tasks, self.compiler, self.llm, memory=self.memory)
@@ -71,6 +74,16 @@ class Container:
         )
         self.debug = DebugWorkflow(self.store, self.tasks, self.compiler, self.llm)
         self.review = ReviewWorkflow(self.store, self.tasks, self.compiler, self.llm)
+        self.repair = RepairWorkflow(
+            self.store,
+            self.tasks,
+            self.compiler,
+            self.patches,
+            self.index,
+            self.verification,
+            self.llm,
+            settings,
+        )
 
     @classmethod
     def create(

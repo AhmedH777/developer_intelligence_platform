@@ -118,3 +118,30 @@ def _module_end_line(tree: ast.Module, source: str) -> int:
     if tree.body:
         return max(_node_end_line(n) for n in tree.body)
     return len(source.splitlines()) or 1
+
+
+def extract_imports(source: str) -> list[str]:
+    """Return the absolute modules imported by ``source`` (relative imports skipped).
+
+    Walks the whole tree so imports inside functions are also captured. Returns
+    dotted module names, e.g. ``["os.path", "streamlit", "dip.core.tasks"]``.
+    """
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+
+    modules: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level == 0 and node.module:
+                modules.append(node.module)
+    # De-duplicate while preserving order.
+    seen: list[str] = []
+    for m in modules:
+        if m not in seen:
+            seen.append(m)
+    return seen

@@ -39,11 +39,13 @@ class VerificationService:
         tasks: TaskService,
         runner: CommandRunner,
         settings: Settings,
+        architecture=None,
     ) -> None:
         self._store = store
         self._tasks = tasks
         self._runner = runner
         self._settings = settings
+        self._architecture = architecture
 
     def verify_task(self, task_id: str) -> VerificationRun:
         task = self._tasks.get_task(task_id)
@@ -59,6 +61,7 @@ class VerificationService:
 
         steps: list[VerificationStep] = []
         steps.append(self._syntax_step(root, py_files))
+        steps.append(self._architecture_step(str(root), py_files))
         steps.append(self._ruff_step(root, py_files))
         steps.append(self._mypy_step(root, py_files))
         steps.append(self._pytest_step(root, py_files))
@@ -102,6 +105,32 @@ class VerificationService:
             blocking=True,
             diagnostics=diagnostics,
             summary="ok" if result.ok else "syntax error",
+        )
+
+    def _architecture_step(self, root: str, py_files: list[str]) -> VerificationStep:
+        if self._architecture is None or not self._architecture.rules:
+            return _skipped("Architecture", "no architecture rules configured")
+        if not py_files:
+            return _skipped("Architecture", "no changed Python files")
+        violations = self._architecture.check_files(root, py_files)
+        diagnostics = [
+            Diagnostic(
+                tool="architecture",
+                file_path=v.file_path,
+                severity="error",
+                code=v.rule_name,
+                message=f"imports '{v.imported_module}' — {v.description}",
+            )
+            for v in violations
+        ]
+        status = VerificationStatus.PASS if not violations else VerificationStatus.FAIL
+        return VerificationStep(
+            name="Architecture",
+            command="(import-rule check)",
+            status=status,
+            blocking=True,
+            diagnostics=diagnostics,
+            summary="ok" if not violations else f"{len(violations)} violation(s)",
         )
 
     def _ruff_step(self, root: Path, py_files: list[str]) -> VerificationStep:
