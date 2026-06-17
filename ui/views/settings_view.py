@@ -48,8 +48,9 @@ def render() -> None:
         }
     )
     st.caption(
-        "Edit these in config/settings.yaml or via DIP_LLM_* environment variables, "
-        "then restart the app."
+        "Set these in a gitignored `.env` file at the repo root (copy `.env.example`), "
+        "or in `config/settings.yaml`, or via `DIP_LLM_*` environment variables. "
+        "Restart the app to apply changes."
     )
 
     st.divider()

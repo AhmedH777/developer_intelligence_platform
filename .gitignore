@@ -2,6 +2,9 @@
 .dip/
 config/settings.yaml
 
+# Secrets — endpoint URL and API key
+.env
+
 # Python
 __pycache__/
 *.py[cod]

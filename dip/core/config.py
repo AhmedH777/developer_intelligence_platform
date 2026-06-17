@@ -55,8 +55,39 @@ class Settings(BaseModel):
         return self.storage_dir / "platform.db"
 
 
-def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
-    """Overlay supported ``DIP_*`` environment variables onto loaded YAML data."""
+def parse_dotenv(text: str) -> dict[str, str]:
+    """Parse a minimal ``.env`` file (``KEY=VALUE`` lines).
+
+    Supports ``#`` comments, blank lines, an optional ``export`` prefix, and
+    single/double quoted values. Intentionally dependency-free so the platform
+    stays installable offline.
+    """
+
+    values: dict[str, str] = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :]
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if (len(value) >= 2) and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        if key:
+            values[key] = value
+    return values
+
+
+def _load_dotenv(path: Path) -> dict[str, str]:
+    if path.exists():
+        return parse_dotenv(path.read_text(encoding="utf-8"))
+    return {}
+
+
+def _apply_env_overrides(data: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
+    """Overlay supported ``DIP_*`` variables (from ``env``) onto loaded YAML data."""
 
     llm = dict(data.get("llm") or {})
     env_map = {
@@ -67,20 +98,28 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
         "DIP_LLM_MAX_TOKENS": ("max_tokens", int),
     }
     for env_name, (key, caster) in env_map.items():
-        raw = os.environ.get(env_name)
+        raw = env.get(env_name)
         if raw is not None and raw != "":
             llm[key] = caster(raw)
     if llm:
         data["llm"] = llm
 
-    storage = os.environ.get("DIP_STORAGE_DIR")
+    storage = env.get("DIP_STORAGE_DIR")
     if storage:
         data["storage_dir"] = storage
     return data
 
 
-def load_settings(config_path: Path | str | None = None) -> Settings:
-    """Load settings from YAML (if present) with environment overrides applied."""
+def load_settings(
+    config_path: Path | str | None = None,
+    dotenv_path: Path | str | None = None,
+) -> Settings:
+    """Load settings from YAML + ``.env``, with process env vars taking precedence.
+
+    Precedence (highest first): real ``DIP_*`` environment variables, ``.env``
+    file, ``config/settings.yaml``, built-in defaults. This lets you keep the
+    endpoint URL and API key in a gitignored ``.env`` file at the repo root.
+    """
 
     data: dict[str, Any] = {}
     path = Path(config_path) if config_path else Path("config/settings.yaml")
@@ -90,5 +129,9 @@ def load_settings(config_path: Path | str | None = None) -> Settings:
             raise ValueError(f"Settings file {path} must contain a YAML mapping.")
         data = loaded
 
-    data = _apply_env_overrides(data)
+    dotenv = _load_dotenv(Path(dotenv_path) if dotenv_path else Path(".env"))
+    # Real environment variables win over the .env file.
+    env = {**dotenv, **os.environ}
+
+    data = _apply_env_overrides(data, env)
     return Settings.model_validate(data)

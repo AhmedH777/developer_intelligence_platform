@@ -39,13 +39,22 @@ The backend never imports a UI framework, so the frontend is swappable.
 python -m pip install -e ".[dev]"
 ```
 
-Configure a local model endpoint (any OpenAI-compatible server) via
-`config/settings.yaml` (copy from `config/settings.example.yaml`) or env vars:
+Configure your local model endpoint and API key. The simplest way is a
+gitignored `.env` file at the repo root — copy the example and edit it:
 
 ```bash
-export DIP_LLM_BASE_URL="http://localhost:11434/v1"   # Ollama example
-export DIP_LLM_MODEL="qwen2.5-coder"
+cp .env.example .env
+# then edit .env:
+#   DIP_LLM_BASE_URL=http://localhost:11434/v1   # Ollama; LM Studio :1234; llama.cpp :8080
+#   DIP_LLM_API_KEY=not-needed-for-local
+#   DIP_LLM_MODEL=qwen2.5-coder
 ```
+
+Configuration is read with this precedence (highest first): real `DIP_LLM_*`
+environment variables → `.env` file → `config/settings.yaml` (copy from
+`config/settings.example.yaml`) → built-in defaults. Use whichever you prefer;
+the `.env` file is the recommended place for the URL and key. Changes are picked
+up on app restart.
 
 ## Run
 
