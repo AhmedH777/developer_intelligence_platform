@@ -52,6 +52,13 @@ def _render_task(container, task: Task) -> None:
     st.subheader(task.title)
     st.caption(f"State: **{task.state.value}**")
 
+    st.toggle(
+        "🤖 Auto-pilot mode",
+        key="autopilot",
+        help="Chain plan → patch → apply → verify → repair, pausing only at the "
+        "configured approval gates.",
+    )
+
     plan = container.plan.get_latest_plan(task.id)
     tab_request, tab_plan, tab_context, tab_events = st.tabs(
         ["Request", "Plan", "Context", "Event history"]
@@ -70,6 +77,9 @@ def _render_task(container, task: Task) -> None:
                 container.tasks.transition(task.id, TaskState.CANCELLED, "Cancelled by user")
                 st.rerun()
 
+        if st.session_state.get("autopilot"):
+            _render_autopilot(container, task)
+
     with tab_plan:
         if plan is None:
             st.caption("No plan yet. Generate one from the Request tab.")
@@ -86,6 +96,67 @@ def _render_task(container, task: Task) -> None:
         for event in container.tasks.list_events(task.id):
             ts = event.created_at.strftime("%H:%M:%S")
             st.markdown(f"`{ts}` **{event.event_type}** — {event.message}")
+
+
+def _render_autopilot(container, task: Task) -> None:
+    st.divider()
+    st.markdown("#### 🤖 Auto-pilot")
+    orch = container.settings.orchestrator
+    st.caption(
+        f"Gates: {', '.join(orch.gates) or 'none'}  ·  auto-repair "
+        f"{'on' if orch.auto_repair else 'off'}  ·  auto-accept "
+        f"{'on' if orch.auto_accept_on_pass else 'off'}"
+    )
+
+    state = task.state
+    if state in (TaskState.NEW, TaskState.PLAN_REJECTED, TaskState.FAILED):
+        if st.button("▶ Run auto-pilot", type="primary", key="ap_run"):
+            _advance(container, task.id)
+    elif state == TaskState.PLANNED:
+        if st.button("✅ Approve plan & continue", type="primary", key="ap_plan"):
+            container.plan.approve(task.id)
+            _advance(container, task.id)
+    elif state == TaskState.PATCH_PROPOSED:
+        st.caption("Tip: review the diff on the Changes page before applying.")
+        if st.button("✅ Apply patch & continue", type="primary", key="ap_patch"):
+            proposal = container.implement.get_latest_proposal(task.id)
+            try:
+                container.implement.apply_patch(task.id, proposal.id)
+            except Exception as exc:
+                st.error(f"Apply failed: {exc}")
+                return
+            _advance(container, task.id)
+    elif state == TaskState.APPLIED:
+        if st.button("▶ Continue (verify → repair → accept)", type="primary", key="ap_applied"):
+            _advance(container, task.id)
+    elif state == TaskState.DONE:
+        st.success("Task complete.")
+
+    result = st.session_state.get("last_orchestrator")
+    if result and result["task_id"] == task.id:
+        st.markdown("**Last auto-pilot run**")
+        for step in result["steps"]:
+            st.markdown(f"- `{step['action']}` {step['detail']}")
+        stopped, msg = result["stopped"], result["message"]
+        if stopped == "done":
+            st.success(msg)
+        elif stopped in ("plan_approval", "patch_approval"):
+            st.info(f"Paused for approval: {msg}")
+        elif stopped == "blocked":
+            st.warning(msg)
+        else:
+            st.info(f"{stopped}: {msg}")
+
+
+def _advance(container, task_id: str) -> None:
+    with st.spinner("Auto-pilot working…"):
+        try:
+            result = container.orchestrator.advance(task_id)
+        except Exception as exc:
+            st.error(f"Auto-pilot error: {exc}")
+            return
+    st.session_state["last_orchestrator"] = result.model_dump()
+    st.rerun()
 
 
 def _generate(container, task: Task) -> None:

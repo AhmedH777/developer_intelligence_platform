@@ -569,4 +569,19 @@ class RepairResult(BaseModel):
     attempts: list[RepairAttempt] = Field(default_factory=list)
 
 
+class OrchestratorStep(BaseModel):
+    action: str
+    detail: str = ""
+
+
+class OrchestratorResult(BaseModel):
+    task_id: str
+    state: str
+    # Why the run stopped: a gate name ("plan_approval"/"patch_approval"),
+    # "done", "blocked", or "cancelled".
+    stopped: str
+    message: str = ""
+    steps: list[OrchestratorStep] = Field(default_factory=list)
+
+
 FileTreeNode.model_rebuild()

@@ -54,6 +54,30 @@ def render() -> None:
     )
 
     st.divider()
+    st.subheader("Model routing by role")
+    from dip.llm.router import ALL_ROLES
+
+    st.write(
+        {role: dict(zip(("model", "temperature"), container.router.resolved_model(role)))
+         for role in ALL_ROLES}
+    )
+    st.caption(
+        "Override per role under `llm.roles` in `config/settings.yaml` (model and/or "
+        "temperature). Unset roles fall back to the base model above."
+    )
+
+    st.divider()
+    st.subheader("Auto-pilot")
+    orch = container.settings.orchestrator
+    st.write(
+        {
+            "approval gates": orch.gates,
+            "auto_repair": orch.auto_repair,
+            "auto_accept_on_pass": orch.auto_accept_on_pass,
+        }
+    )
+
+    st.divider()
     st.subheader("Registered projects")
     for project in container.projects.list_projects():
         st.write(f"- **{project.name}** — `{project.root_path}`")

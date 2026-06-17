@@ -32,6 +32,14 @@ DEFAULT_EXCLUDES: tuple[str, ...] = (
 )
 
 
+class RoleModel(BaseModel):
+    """Per-role overrides for the base LLM settings (the plan's §12.2)."""
+
+    model: str | None = None
+    temperature: float | None = None
+    max_tokens: int | None = None
+
+
 class LLMSettings(BaseModel):
     """Connection details for an OpenAI-compatible local model server."""
 
@@ -41,6 +49,25 @@ class LLMSettings(BaseModel):
     temperature: float = 0.1
     max_tokens: int = 1024
     context_char_budget: int = 24000
+    # role name -> overrides. Unset roles fall back to the base settings above.
+    roles: dict[str, RoleModel] = Field(default_factory=dict)
+
+    def for_role(self, role: str) -> "LLMSettings":
+        """Return a copy with this role's overrides applied (or the base)."""
+
+        override = self.roles.get(role)
+        if override is None:
+            return self
+        return self.model_copy(
+            update={
+                "model": override.model or self.model,
+                "temperature": (
+                    self.temperature if override.temperature is None else override.temperature
+                ),
+                "max_tokens": override.max_tokens or self.max_tokens,
+                "roles": {},
+            }
+        )
 
 
 class SafetySettings(BaseModel):
@@ -76,6 +103,14 @@ class ArchitectureSettings(BaseModel):
     )
 
 
+class OrchestratorSettings(BaseModel):
+    """Auto-pilot policy: which steps run automatically vs. wait for approval."""
+
+    gates: list[str] = Field(default_factory=lambda: ["plan_approval", "patch_approval"])
+    auto_repair: bool = True
+    auto_accept_on_pass: bool = True
+
+
 class CommandSettings(BaseModel):
     """Controlled-execution policy (the plan's §15.2)."""
 
@@ -95,6 +130,7 @@ class Settings(BaseModel):
     safety: SafetySettings = Field(default_factory=SafetySettings)
     commands: CommandSettings = Field(default_factory=CommandSettings)
     architecture: ArchitectureSettings = Field(default_factory=ArchitectureSettings)
+    orchestrator: OrchestratorSettings = Field(default_factory=OrchestratorSettings)
     default_excludes: list[str] = Field(default_factory=lambda: list(DEFAULT_EXCLUDES))
 
     @property

@@ -88,6 +88,18 @@ This currently implements **Milestones 0–2**:
 
 This completes the general-purpose platform (M8 ML/RL extras are optional).
 
+**Enhancements — per-role routing & auto-pilot**
+
+- **Per-role model routing**: each role (planner / coder / reviewer / debugger /
+  explainer) can use its own model + temperature, configured under `llm.roles`.
+  Unset roles fall back to the base model, so the default is unchanged. This
+  squeezes more out of weak local models by matching model→task.
+- **Auto-pilot orchestrator**: an opt-in mode that chains plan → patch → apply →
+  verify → repair → accept automatically, pausing only at the configured approval
+  gates (default: plan and patch). It turns the divided, weak-model-friendly
+  workflows into a single autonomous agent without giving up the safety gates.
+  Toggle it per task on the Tasks page.
+
 ## Architecture
 
 ```
@@ -97,13 +109,14 @@ dip/  ── UI-agnostic backend package (no Streamlit imports)
   repository/   scanner, ignore rules, AST extraction, search, indexing
   core/         ... + TaskService, JobService, MemoryService
   skills/       loader for repository-specific markdown skill files
-  llm/          LLMClient protocol + OpenAI-compatible client, prompts,
-                structured-output helper (JSON extraction + validation + repair)
+  llm/          LLMClient protocol + OpenAI-compatible client, router (per-role
+                models), prompts, structured-output helper
+  workflows/    explore, plan, implement, verify, debug, review, repair,
+                orchestrator (auto-pilot)
   context/      context compiler (explain / plan / implement evidence selection)
   tools/        safety, patch, diffing, commands, result_parsers,
                 traceback_parser
   repository/   ... + architecture (import-graph rule checks)
-  workflows/    explore, plan, implement, verify, debug, review, repair
   storage/      SQLite schema + typed data-access layer
   container.py  composition root (wires the service graph)
 ```
