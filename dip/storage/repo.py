@@ -13,9 +13,13 @@ from datetime import datetime
 from dip.core.models import (
     ContextPackage,
     ImplementationPlan,
+    PatchApplication,
+    PatchPreview,
+    PatchProposal,
     PlanGrounding,
     Project,
     RepositoryFile,
+    StoredPatchProposal,
     StoredPlan,
     Symbol,
     SymbolKind,
@@ -248,6 +252,73 @@ class Store:
         ).fetchone()
         return _plan_from_row(row) if row else None
 
+    # ----- patch proposals --------------------------------------------------
+    def insert_patch_proposal(self, proposal: StoredPatchProposal) -> None:
+        self._conn.execute(
+            "INSERT INTO patch_proposals"
+            " (id, task_id, created_at, model, repaired, proposal_json, preview_json,"
+            "  context_json, raw_response)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                proposal.id,
+                proposal.task_id,
+                proposal.created_at.isoformat(),
+                proposal.model,
+                1 if proposal.repaired else 0,
+                proposal.proposal.model_dump_json(),
+                proposal.preview.model_dump_json(),
+                proposal.context.model_dump_json(),
+                proposal.raw_response,
+            ),
+        )
+        self._conn.commit()
+
+    def get_patch_proposal(self, proposal_id: str) -> StoredPatchProposal | None:
+        row = self._conn.execute(
+            "SELECT * FROM patch_proposals WHERE id = ?", (proposal_id,)
+        ).fetchone()
+        return _proposal_from_row(row) if row else None
+
+    def get_latest_patch_proposal(self, task_id: str) -> StoredPatchProposal | None:
+        row = self._conn.execute(
+            "SELECT * FROM patch_proposals WHERE task_id = ? ORDER BY created_at DESC LIMIT 1",
+            (task_id,),
+        ).fetchone()
+        return _proposal_from_row(row) if row else None
+
+    # ----- patch applications -----------------------------------------------
+    def insert_patch_application(self, application: PatchApplication) -> None:
+        self._conn.execute(
+            "INSERT INTO patch_applications"
+            " (id, task_id, proposal_id, created_at, status, changed_files, snapshot_json, diff)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                application.id,
+                application.task_id,
+                application.proposal_id,
+                application.created_at.isoformat(),
+                application.status,
+                json.dumps(application.changed_files),
+                json.dumps(application.snapshot),
+                application.diff,
+            ),
+        )
+        self._conn.commit()
+
+    def update_application_status(self, application_id: str, status: str) -> None:
+        self._conn.execute(
+            "UPDATE patch_applications SET status = ? WHERE id = ?",
+            (status, application_id),
+        )
+        self._conn.commit()
+
+    def get_latest_application(self, task_id: str) -> PatchApplication | None:
+        row = self._conn.execute(
+            "SELECT * FROM patch_applications WHERE task_id = ? ORDER BY created_at DESC LIMIT 1",
+            (task_id,),
+        ).fetchone()
+        return _application_from_row(row) if row else None
+
 
 # ----- row mappers ----------------------------------------------------------
 def _project_from_row(row: sqlite3.Row) -> Project:
@@ -323,4 +394,31 @@ def _plan_from_row(row: sqlite3.Row) -> StoredPlan:
         created_at=datetime.fromisoformat(row["created_at"]),
         raw_response=row["raw_response"],
         repaired=bool(row["repaired"]),
+    )
+
+
+def _proposal_from_row(row: sqlite3.Row) -> StoredPatchProposal:
+    return StoredPatchProposal(
+        id=row["id"],
+        task_id=row["task_id"],
+        proposal=PatchProposal.model_validate_json(row["proposal_json"]),
+        preview=PatchPreview.model_validate_json(row["preview_json"]),
+        context=ContextPackage.model_validate_json(row["context_json"]),
+        model=row["model"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        raw_response=row["raw_response"],
+        repaired=bool(row["repaired"]),
+    )
+
+
+def _application_from_row(row: sqlite3.Row) -> PatchApplication:
+    return PatchApplication(
+        id=row["id"],
+        task_id=row["task_id"],
+        proposal_id=row["proposal_id"],
+        status=row["status"],
+        changed_files=json.loads(row["changed_files"]),
+        snapshot=json.loads(row["snapshot_json"]),
+        diff=row["diff"],
+        created_at=datetime.fromisoformat(row["created_at"]),
     )

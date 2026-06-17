@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -138,11 +138,15 @@ class TaskState(str, Enum):
     PLANNED = "planned"  # plan generated, awaiting user approval
     PLAN_APPROVED = "plan_approved"
     PLAN_REJECTED = "plan_rejected"
+    PATCH_PROPOSED = "patch_proposed"  # patch generated, awaiting approval
+    APPLIED = "applied"  # patch applied to disk
+    ROLLED_BACK = "rolled_back"
+    DONE = "done"
     CANCELLED = "cancelled"
     FAILED = "failed"
 
 
-# Allowed state transitions. Patch/verify states arrive in later milestones.
+# Allowed state transitions. Verification states arrive in a later milestone.
 TASK_TRANSITIONS: dict[TaskState, set[TaskState]] = {
     TaskState.NEW: {TaskState.INVESTIGATING, TaskState.CANCELLED},
     TaskState.INVESTIGATING: {TaskState.PLANNED, TaskState.FAILED, TaskState.CANCELLED},
@@ -152,8 +156,30 @@ TASK_TRANSITIONS: dict[TaskState, set[TaskState]] = {
         TaskState.CANCELLED,
     },
     TaskState.PLAN_REJECTED: {TaskState.INVESTIGATING, TaskState.CANCELLED},
-    TaskState.PLAN_APPROVED: {TaskState.CANCELLED},
-    TaskState.FAILED: {TaskState.INVESTIGATING, TaskState.CANCELLED},
+    TaskState.PLAN_APPROVED: {
+        TaskState.PATCH_PROPOSED,
+        TaskState.FAILED,
+        TaskState.CANCELLED,
+    },
+    # PATCH_PROPOSED -> PLAN_APPROVED means "reject patch / regenerate".
+    TaskState.PATCH_PROPOSED: {
+        TaskState.APPLIED,
+        TaskState.PLAN_APPROVED,
+        TaskState.FAILED,
+        TaskState.CANCELLED,
+    },
+    TaskState.APPLIED: {TaskState.DONE, TaskState.ROLLED_BACK, TaskState.CANCELLED},
+    TaskState.ROLLED_BACK: {
+        TaskState.PATCH_PROPOSED,
+        TaskState.PLAN_APPROVED,
+        TaskState.CANCELLED,
+    },
+    TaskState.DONE: {TaskState.CANCELLED},
+    TaskState.FAILED: {
+        TaskState.INVESTIGATING,
+        TaskState.PLAN_APPROVED,
+        TaskState.CANCELLED,
+    },
     TaskState.CANCELLED: set(),
 }
 
@@ -219,6 +245,80 @@ class StoredPlan(BaseModel):
     created_at: datetime = Field(default_factory=_now)
     raw_response: str = ""
     repaired: bool = False
+
+
+# ----- Patch generation & application (Milestone 3) -------------------------
+
+
+class SearchReplaceEdit(BaseModel):
+    """One Aider-style edit: replace an exact ``search`` block with ``replace``.
+
+    An empty ``search`` means "create a new file" whose content is ``replace``.
+    """
+
+    path: str
+    search: str
+    replace: str
+
+
+class PatchProposal(BaseModel):
+    """Structured patch the model must return — no raw file writes by the model."""
+
+    summary: str
+    rationale: str = ""
+    edits: list[SearchReplaceEdit] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+
+
+class FileChange(BaseModel):
+    """A single file's computed before/after plus a unified diff for display."""
+
+    path: str
+    change_type: Literal["modify", "create"]
+    original: str
+    updated: str
+    diff: str
+    applicable: bool
+    issues: list[str] = Field(default_factory=list)
+
+
+class PatchPreview(BaseModel):
+    """Validated, displayable view of a proposal before it is applied."""
+
+    file_changes: list[FileChange] = Field(default_factory=list)
+    blocking_issues: list[str] = Field(default_factory=list)
+
+    @property
+    def safe(self) -> bool:
+        return not self.blocking_issues and all(c.applicable for c in self.file_changes)
+
+    @property
+    def combined_diff(self) -> str:
+        return "\n".join(c.diff for c in self.file_changes if c.diff)
+
+
+class StoredPatchProposal(BaseModel):
+    id: str
+    task_id: str
+    proposal: PatchProposal
+    preview: PatchPreview
+    context: ContextPackage
+    model: str
+    created_at: datetime = Field(default_factory=_now)
+    raw_response: str = ""
+    repaired: bool = False
+
+
+class PatchApplication(BaseModel):
+    id: str
+    task_id: str
+    proposal_id: str
+    status: Literal["applied", "rolled_back", "failed"]
+    changed_files: list[str] = Field(default_factory=list)
+    # path -> original content, or None if the file did not exist (was created).
+    snapshot: dict[str, str | None] = Field(default_factory=dict)
+    diff: str = ""
+    created_at: datetime = Field(default_factory=_now)
 
 
 FileTreeNode.model_rebuild()

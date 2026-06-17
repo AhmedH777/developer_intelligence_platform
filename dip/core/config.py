@@ -43,11 +43,22 @@ class LLMSettings(BaseModel):
     context_char_budget: int = 24000
 
 
+class SafetySettings(BaseModel):
+    """Guardrails for patch application (the plan's §18 configuration)."""
+
+    require_patch_approval: bool = True
+    max_modified_files: int = 8
+    protected_paths: list[str] = Field(
+        default_factory=lambda: [".git", ".env", "secrets"]
+    )
+
+
 class Settings(BaseModel):
     """Top-level application settings."""
 
     storage_dir: Path = Field(default=Path(".dip"))
     llm: LLMSettings = Field(default_factory=LLMSettings)
+    safety: SafetySettings = Field(default_factory=SafetySettings)
     default_excludes: list[str] = Field(default_factory=lambda: list(DEFAULT_EXCLUDES))
 
     @property

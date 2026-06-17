@@ -25,9 +25,20 @@ This currently implements **Milestones 0–2**:
 - Approve or reject the plan; every state change and model call is recorded as a
   task event (full audit trail)
 
-It does **not** yet modify files, run commands, or use background workers — those
-are later milestones. Patch generation, when added, will use **search/replace
-blocks** rather than unified diffs.
+**M3 — controlled patch generation**
+
+- From an approved plan, the model proposes a patch as **search/replace blocks**
+  (Aider-style) — it never writes files directly
+- Edits are validated before anything touches disk: path safety (no absolute
+  paths, no `..` traversal, no protected paths), and each search block must match
+  its file **exactly once** (stale/ambiguous edits are rejected)
+- The UI shows a **computed unified diff** per file; apply is gated on the safety
+  preview
+- Apply is **transactional with a snapshot**, so any applied change can be rolled
+  back to the exact prior state; the symbol index is refreshed after apply
+
+It does **not** yet run commands or use background workers — those are later
+milestones (verification/repair).
 
 ## Architecture
 
@@ -39,8 +50,9 @@ dip/  ── UI-agnostic backend package (no Streamlit imports)
   core/         ... + TaskService (task state machine + event log)
   llm/          LLMClient protocol + OpenAI-compatible client, prompts,
                 structured-output helper (JSON extraction + validation + repair)
-  context/      context compiler (explain + plan evidence selection)
-  workflows/    explore (explain a symbol), plan (grounded implementation plan)
+  context/      context compiler (explain / plan / implement evidence selection)
+  tools/        safety (path validation), patch (apply/rollback), diffing
+  workflows/    explore, plan, implement (generate/apply/rollback a patch)
   storage/      SQLite schema + typed data-access layer
   container.py  composition root (wires the service graph)
 ```
@@ -83,6 +95,10 @@ Expand *"Context sent"* to see exactly what the model received.
 To plan a change: **Tasks** → *New task* → describe the request → **Generate
 plan** → review the plan, its evidence (Context tab), and event history →
 **Approve** or **Reject**.
+
+To make the change: with an approved plan, go to **Changes** → **Generate patch**
+→ review the per-file diff → **Apply patch** (snapshotted) → **Roll back** or
+**Accept**.
 
 ## Test
 

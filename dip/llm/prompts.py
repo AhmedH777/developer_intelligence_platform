@@ -69,6 +69,54 @@ PLAN_JSON_TEMPLATE = """{
 }"""
 
 
+IMPLEMENT_SYSTEM = (
+    "You are a careful Python engineer producing a minimal patch as a set of "
+    "exact search/replace edits. You never write files directly.\n"
+    "Rules:\n"
+    "- For each edit, the `search` text MUST be copied verbatim from the provided "
+    "file content, including indentation, and must be unique within that file.\n"
+    "- Keep `search` blocks small but large enough to be unambiguous.\n"
+    "- To create a new file, use an empty `search` and put the full file content "
+    "in `replace`.\n"
+    "- Make the smallest change that satisfies the request. Do not reformat "
+    "unrelated code.\n"
+    "- Only edit files present in the evidence (or new files you clearly intend "
+    "to create).\n"
+    "- Respond with a single JSON object only — no prose, no markdown fences."
+)
+
+PATCH_JSON_TEMPLATE = """{
+  "summary": "one-line summary of the change",
+  "rationale": "why this change satisfies the request",
+  "edits": [
+    {"path": "pkg/module.py", "search": "exact text to find", "replace": "new text"}
+  ],
+  "risks": ["risk or follow-up to check"]
+}"""
+
+
+def build_implement_messages(context: ContextPackage, plan_goal: str = "") -> list[Message]:
+    evidence_blocks: list[str] = []
+    for region in context.source_regions:
+        header = f"File: {region.relative_path} (full content, {region.end_line} lines)"
+        evidence_blocks.append(f"{header}\n```python\n{region.content}\n```")
+    evidence = "\n\n".join(evidence_blocks) if evidence_blocks else "(no files provided)"
+
+    goal_line = f"Approved plan goal: {plan_goal}\n\n" if plan_goal else ""
+    user = (
+        f"Request:\n{context.user_request}\n\n"
+        f"{goal_line}"
+        f"Current file content (author search blocks to match this exactly):\n\n"
+        f"{evidence}\n\n"
+        "Return a patch as a JSON object with exactly this shape:\n"
+        f"{PATCH_JSON_TEMPLATE}"
+    )
+    return [
+        Message(role="system", content=IMPLEMENT_SYSTEM),
+        Message(role="user", content=user),
+    ]
+
+
 def build_plan_messages(context: ContextPackage) -> list[Message]:
     evidence_blocks: list[str] = []
     for region in context.source_regions:

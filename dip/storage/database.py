@@ -77,6 +77,29 @@ CREATE TABLE IF NOT EXISTS plans (
     raw_response   TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS patch_proposals (
+    id            TEXT PRIMARY KEY,
+    task_id       TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    created_at    TEXT NOT NULL,
+    model         TEXT NOT NULL,
+    repaired      INTEGER NOT NULL DEFAULT 0,
+    proposal_json TEXT NOT NULL,
+    preview_json  TEXT NOT NULL,
+    context_json  TEXT NOT NULL,
+    raw_response  TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS patch_applications (
+    id              TEXT PRIMARY KEY,
+    task_id         TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    proposal_id     TEXT NOT NULL REFERENCES patch_proposals(id) ON DELETE CASCADE,
+    created_at      TEXT NOT NULL,
+    status          TEXT NOT NULL,
+    changed_files   TEXT NOT NULL,
+    snapshot_json   TEXT NOT NULL,
+    diff            TEXT NOT NULL DEFAULT ''
+);
+
 CREATE INDEX IF NOT EXISTS idx_files_project ON repository_files(project_id);
 CREATE INDEX IF NOT EXISTS idx_symbols_project ON repository_symbols(project_id);
 CREATE INDEX IF NOT EXISTS idx_symbols_file ON repository_symbols(file_id);
@@ -84,6 +107,8 @@ CREATE INDEX IF NOT EXISTS idx_symbols_name ON repository_symbols(project_id, na
 CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_events_task ON task_events(task_id);
 CREATE INDEX IF NOT EXISTS idx_plans_task ON plans(task_id);
+CREATE INDEX IF NOT EXISTS idx_proposals_task ON patch_proposals(task_id);
+CREATE INDEX IF NOT EXISTS idx_applications_task ON patch_applications(task_id);
 """
 
 

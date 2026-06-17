@@ -18,7 +18,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import streamlit as st  # noqa: E402
 
 from ui.state import get_active_project_id, get_container  # noqa: E402
-from ui.views import repository_view, settings_view, tasks_view  # noqa: E402
+from ui.views import (  # noqa: E402
+    changes_view,
+    repository_view,
+    settings_view,
+    tasks_view,
+)
 
 st.set_page_config(page_title="Developer Intelligence Platform", layout="wide")
 
@@ -48,7 +53,9 @@ def _sidebar() -> str:
     else:
         st.sidebar.info("No projects yet. Add one in Settings.")
 
-    return st.sidebar.radio("Page", ["Repository", "Tasks", "Settings"], index=0)
+    return st.sidebar.radio(
+        "Page", ["Repository", "Tasks", "Changes", "Settings"], index=0
+    )
 
 
 def main() -> None:
@@ -57,6 +64,8 @@ def main() -> None:
         settings_view.render()
     elif page == "Tasks":
         tasks_view.render()
+    elif page == "Changes":
+        changes_view.render()
     else:
         repository_view.render()
 

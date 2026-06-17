@@ -18,7 +18,9 @@ from dip.repository.index_service import IndexService
 from dip.repository.repository_service import RepositoryService
 from dip.storage.database import connect
 from dip.storage.repo import Store
+from dip.tools.patch import PatchService
 from dip.workflows.explore import ExploreWorkflow
+from dip.workflows.implement import ImplementWorkflow
 from dip.workflows.plan import PlanWorkflow
 
 
@@ -40,8 +42,17 @@ class Container:
         self.compiler = ContextCompiler(
             self.repository, char_budget=settings.llm.context_char_budget
         )
+        self.patches = PatchService(settings.safety)
         self.explore = ExploreWorkflow(self.repository, self.compiler, self.llm)
         self.plan = PlanWorkflow(self.store, self.tasks, self.compiler, self.llm)
+        self.implement = ImplementWorkflow(
+            self.store,
+            self.tasks,
+            self.compiler,
+            self.patches,
+            self.index,
+            self.llm,
+        )
 
     @classmethod
     def create(

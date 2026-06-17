@@ -148,6 +148,56 @@ class ContextCompiler:
             notes=notes,
         )
 
+    def build_implement_context(
+        self, project_id: str, request: str, file_paths: list[str]
+    ) -> ContextPackage:
+        """Gather full source of the plan's target files for patch generation.
+
+        Whole files are included (not just symbols) because the model needs exact
+        surrounding text to author search/replace blocks that match verbatim.
+        """
+
+        notes: list[str] = []
+        regions: list[SourceRegion] = []
+        used_chars = 0
+        seen: set[str] = set()
+        for path in file_paths:
+            if path in seen:
+                continue
+            seen.add(path)
+            try:
+                source = self._repo.get_file(project_id, path)
+            except ValueError:
+                notes.append(f"{path}: not in the index (may be a new file to create).")
+                continue
+            content = source.content
+            if used_chars + len(content) > self._char_budget:
+                notes.append(f"{path}: omitted to stay within the context budget.")
+                continue
+            line_count = content.count("\n") + 1
+            regions.append(
+                SourceRegion(
+                    relative_path=path,
+                    symbol=None,
+                    start_line=1,
+                    end_line=line_count,
+                    content=content,
+                    kind="file",
+                    reason="target file from approved plan",
+                )
+            )
+            used_chars += len(content)
+
+        char_estimate = sum(len(r.content) for r in regions)
+        return ContextPackage(
+            user_request=request,
+            role="coder",
+            source_regions=regions,
+            char_estimate=char_estimate,
+            token_estimate=char_estimate // CHARS_PER_TOKEN,
+            notes=notes,
+        )
+
     @staticmethod
     def _keywords(request: str) -> list[str]:
         seen: list[str] = []
