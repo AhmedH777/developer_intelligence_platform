@@ -57,6 +57,20 @@ class RepositoryService:
         end = min(symbol.end_line, len(lines))
         return "\n".join(lines[start:end])
 
+    def read_line_window(
+        self, project_id: str, relative_path: str, center_line: int, before: int = 10, after: int = 5
+    ) -> tuple[int, int, str]:
+        """Return (start_line, end_line, source) around ``center_line`` (1-based)."""
+
+        project = self._store.get_project(project_id)
+        assert project is not None
+        absolute = Path(project.root_path) / relative_path
+        lines = absolute.read_text(encoding="utf-8", errors="replace").splitlines()
+        start = max(center_line - before, 1)
+        end = min(center_line + after, len(lines))
+        snippet = "\n".join(lines[start - 1 : end])
+        return start, end, snippet
+
 
 def _build_tree(files: list[RepositoryFile]) -> FileTreeNode:
     root = FileTreeNode(name="", path="", is_dir=True)

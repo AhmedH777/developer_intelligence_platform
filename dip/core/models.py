@@ -418,4 +418,80 @@ class VerificationRun(BaseModel):
         return self.status == VerificationStatus.PASS
 
 
+# ----- Debugging & review (Milestone 5) -------------------------------------
+
+
+class TracebackFrame(BaseModel):
+    file_path: str
+    line: int
+    function: str
+    code: str = ""
+    in_project: bool = False
+    relative_path: str | None = None
+
+
+class DebugHypothesis(BaseModel):
+    description: str
+    confidence: Literal["low", "medium", "high"] = "medium"
+    evidence: str = ""
+
+
+class DebugAnalysis(BaseModel):
+    """Model output for a debug request — frames are supplied deterministically."""
+
+    summary: str
+    hypotheses: list[DebugHypothesis] = Field(default_factory=list)
+    suggested_inspection: list[str] = Field(default_factory=list)
+    minimal_fix: str = ""
+    regression_test: str = ""
+    verification_plan: list[str] = Field(default_factory=list)
+
+
+class StoredDebugReport(BaseModel):
+    id: str
+    task_id: str | None = None
+    input_text: str
+    exception_type: str | None = None
+    exception_message: str = ""
+    frames: list[TracebackFrame] = Field(default_factory=list)
+    analysis: DebugAnalysis
+    context: ContextPackage
+    model: str
+    created_at: datetime = Field(default_factory=_now)
+    raw_response: str = ""
+    repaired: bool = False
+
+    @property
+    def project_frames(self) -> list[TracebackFrame]:
+        return [f for f in self.frames if f.in_project]
+
+
+class ReviewFinding(BaseModel):
+    severity: Literal["info", "warning", "error", "critical"] = "warning"
+    category: str = "correctness"
+    file_path: str = ""
+    start_line: int | None = None
+    end_line: int | None = None
+    title: str
+    explanation: str = ""
+    recommendation: str = ""
+
+
+class ReviewResult(BaseModel):
+    summary: str
+    findings: list[ReviewFinding] = Field(default_factory=list)
+
+
+class StoredReview(BaseModel):
+    id: str
+    task_id: str | None = None
+    target: str
+    result: ReviewResult
+    context: ContextPackage
+    model: str
+    created_at: datetime = Field(default_factory=_now)
+    raw_response: str = ""
+    repaired: bool = False
+
+
 FileTreeNode.model_rebuild()

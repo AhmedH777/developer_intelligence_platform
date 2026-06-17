@@ -121,6 +121,20 @@ CREATE TABLE IF NOT EXISTS verification_runs (
     steps_json  TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS debug_reports (
+    id           TEXT PRIMARY KEY,
+    task_id      TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+    created_at   TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS review_runs (
+    id           TEXT PRIMARY KEY,
+    task_id      TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+    created_at   TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_files_project ON repository_files(project_id);
 CREATE INDEX IF NOT EXISTS idx_symbols_project ON repository_symbols(project_id);
 CREATE INDEX IF NOT EXISTS idx_symbols_file ON repository_symbols(file_id);
@@ -133,6 +147,8 @@ CREATE INDEX IF NOT EXISTS idx_applications_task ON patch_applications(task_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_project ON jobs(project_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_idem ON jobs(idempotency_key);
 CREATE INDEX IF NOT EXISTS idx_verif_task ON verification_runs(task_id);
+CREATE INDEX IF NOT EXISTS idx_debug_task ON debug_reports(task_id);
+CREATE INDEX IF NOT EXISTS idx_review_task ON review_runs(task_id);
 """
 
 

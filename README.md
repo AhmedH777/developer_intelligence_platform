@@ -50,8 +50,20 @@ This currently implements **Milestones 0–2**:
 - **Failed verification blocks completion**: a task with a failing blocking check
   can't be accepted without an explicit, audited override
 
-It does **not** yet include the debug/review workflows or bounded repair — those
-are later milestones.
+**M5 — debugging & review**
+
+- A deterministic **traceback parser** extracts frames + the exception; frames
+  inside the project root are identified as **repository frames** and their
+  source is pulled into context
+- **Debug workflow**: ranked hypotheses (with confidence + evidence), suggested
+  inspection, a minimal fix, a regression-test idea, and a verification plan —
+  all grounded in the parsed frames
+- **Review workflow**: structured findings on the latest patch (severity,
+  category, file, line range, explanation, recommendation), citing concrete
+  files and lines
+
+It does **not** yet include memory/skills or bounded repair — those are later
+milestones.
 
 ## Architecture
 
@@ -64,9 +76,9 @@ dip/  ── UI-agnostic backend package (no Streamlit imports)
   llm/          LLMClient protocol + OpenAI-compatible client, prompts,
                 structured-output helper (JSON extraction + validation + repair)
   context/      context compiler (explain / plan / implement evidence selection)
-  tools/        safety, patch (apply/rollback), diffing, commands (runner),
-                result_parsers (pytest/ruff/mypy)
-  workflows/    explore, plan, implement, verify (verification pipeline)
+  tools/        safety, patch, diffing, commands, result_parsers,
+                traceback_parser
+  workflows/    explore, plan, implement, verify, debug, review
   storage/      SQLite schema + typed data-access layer
   container.py  composition root (wires the service graph)
 ```
@@ -118,6 +130,10 @@ types → targeted tests). If blocking checks pass you can **Accept** on the Cha
 page; otherwise accept is blocked (or override explicitly). Use **Execution** to
 run an allowlisted command (e.g. the full test suite) as a background job with
 live logs.
+
+To review or debug: **Review** runs a structured review of the active task's
+latest patch; **Debug** takes a pasted traceback/failure, identifies the
+repository frames, and returns ranked hypotheses with a minimal fix.
 
 ## Test
 

@@ -117,6 +117,95 @@ def build_implement_messages(context: ContextPackage, plan_goal: str = "") -> li
     ]
 
 
+DEBUG_SYSTEM = (
+    "You are a debugging assistant. You diagnose a failure using only the "
+    "traceback and the repository source provided.\n"
+    "Rules:\n"
+    "- Ground every hypothesis in the provided frames/source; cite file and "
+    "function in the `evidence` field. Do not invent code.\n"
+    "- Rank hypotheses most-likely first and give each a confidence of low, "
+    "medium, or high.\n"
+    "- Propose the smallest plausible fix and a regression test that would catch "
+    "the bug.\n"
+    "- Respond with a single JSON object only — no prose, no markdown fences."
+)
+
+DEBUG_JSON_TEMPLATE = """{
+  "summary": "what went wrong, in one or two sentences",
+  "hypotheses": [
+    {"description": "...", "confidence": "high", "evidence": "file.py:func - why"}
+  ],
+  "suggested_inspection": ["what to print/log/check next"],
+  "minimal_fix": "the smallest change that would likely fix it",
+  "regression_test": "a test that would catch this bug",
+  "verification_plan": ["command or check to confirm the fix"]
+}"""
+
+
+def build_debug_messages(
+    context: ContextPackage, exception_type: str | None, exception_message: str, frames_text: str
+) -> list[Message]:
+    evidence_blocks: list[str] = []
+    for region in context.source_regions:
+        header = (
+            f"File: {region.relative_path} (lines {region.start_line}-{region.end_line}, "
+            f"function {region.symbol})"
+        )
+        evidence_blocks.append(f"{header}\n```python\n{region.content}\n```")
+    evidence = "\n\n".join(evidence_blocks) if evidence_blocks else "(no in-project source)"
+
+    exc = f"{exception_type}: {exception_message}" if exception_type else "(unparsed failure)"
+    user = (
+        f"Failure / traceback:\n{context.user_request}\n\n"
+        f"Exception: {exc}\n\n"
+        f"Repository frames (most recent call last):\n{frames_text}\n\n"
+        f"Source around the in-project frames:\n\n{evidence}\n\n"
+        "Diagnose the failure as a JSON object with exactly this shape:\n"
+        f"{DEBUG_JSON_TEMPLATE}"
+    )
+    return [Message(role="system", content=DEBUG_SYSTEM), Message(role="user", content=user)]
+
+
+REVIEW_SYSTEM = (
+    "You are a code reviewer. Review the change described by the diff, using the "
+    "provided file content as ground truth.\n"
+    "Consider these categories: correctness, regression risk, missing tests, "
+    "architecture, error handling, performance, security, readability.\n"
+    "Rules:\n"
+    "- Every finding must cite a real file path and, where possible, line numbers "
+    "from the provided content. Do not invent code.\n"
+    "- Use severity one of: info, warning, error, critical.\n"
+    "- If the change looks fine, return an empty findings list with a short "
+    "summary.\n"
+    "- Respond with a single JSON object only — no prose, no markdown fences."
+)
+
+REVIEW_JSON_TEMPLATE = """{
+  "summary": "overall assessment in one or two sentences",
+  "findings": [
+    {"severity": "warning", "category": "correctness", "file_path": "pkg/m.py",
+     "start_line": 12, "end_line": 14, "title": "short title",
+     "explanation": "what is wrong and why", "recommendation": "how to fix"}
+  ]
+}"""
+
+
+def build_review_messages(context: ContextPackage) -> list[Message]:
+    evidence_blocks: list[str] = []
+    for region in context.source_regions:
+        header = f"File: {region.relative_path} (resulting content, {region.end_line} lines)"
+        evidence_blocks.append(f"{header}\n```python\n{region.content}\n```")
+    evidence = "\n\n".join(evidence_blocks) if evidence_blocks else "(no file content)"
+
+    user = (
+        f"Change under review (unified diff):\n```diff\n{context.user_request}\n```\n\n"
+        f"Resulting file content:\n\n{evidence}\n\n"
+        "Review the change and return a JSON object with exactly this shape:\n"
+        f"{REVIEW_JSON_TEMPLATE}"
+    )
+    return [Message(role="system", content=REVIEW_SYSTEM), Message(role="user", content=user)]
+
+
 def build_plan_messages(context: ContextPackage) -> list[Message]:
     evidence_blocks: list[str] = []
     for region in context.source_regions:

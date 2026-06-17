@@ -22,8 +22,10 @@ from dip.core.models import (
     PlanGrounding,
     Project,
     RepositoryFile,
+    StoredDebugReport,
     StoredPatchProposal,
     StoredPlan,
+    StoredReview,
     Symbol,
     SymbolKind,
     Task,
@@ -394,6 +396,38 @@ class Store:
             (task_id,),
         ).fetchone()
         return _verification_from_row(row) if row else None
+
+    # ----- debug reports ----------------------------------------------------
+    def insert_debug_report(self, report: StoredDebugReport) -> None:
+        self._conn.execute(
+            "INSERT INTO debug_reports (id, task_id, created_at, payload_json)"
+            " VALUES (?, ?, ?, ?)",
+            (report.id, report.task_id, report.created_at.isoformat(), report.model_dump_json()),
+        )
+        self._conn.commit()
+
+    def get_latest_debug_report(self, task_id: str) -> StoredDebugReport | None:
+        row = self._conn.execute(
+            "SELECT payload_json FROM debug_reports WHERE task_id = ? ORDER BY created_at DESC LIMIT 1",
+            (task_id,),
+        ).fetchone()
+        return StoredDebugReport.model_validate_json(row["payload_json"]) if row else None
+
+    # ----- review runs ------------------------------------------------------
+    def insert_review(self, review: StoredReview) -> None:
+        self._conn.execute(
+            "INSERT INTO review_runs (id, task_id, created_at, payload_json)"
+            " VALUES (?, ?, ?, ?)",
+            (review.id, review.task_id, review.created_at.isoformat(), review.model_dump_json()),
+        )
+        self._conn.commit()
+
+    def get_latest_review(self, task_id: str) -> StoredReview | None:
+        row = self._conn.execute(
+            "SELECT payload_json FROM review_runs WHERE task_id = ? ORDER BY created_at DESC LIMIT 1",
+            (task_id,),
+        ).fetchone()
+        return StoredReview.model_validate_json(row["payload_json"]) if row else None
 
 
 # ----- row mappers ----------------------------------------------------------

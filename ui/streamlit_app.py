@@ -20,8 +20,10 @@ import streamlit as st  # noqa: E402
 from ui.state import get_active_project_id, get_container  # noqa: E402
 from ui.views import (  # noqa: E402
     changes_view,
+    debug_view,
     execution_view,
     repository_view,
+    review_view,
     settings_view,
     tasks_view,
     tests_view,
@@ -57,7 +59,16 @@ def _sidebar() -> str:
 
     return st.sidebar.radio(
         "Page",
-        ["Repository", "Tasks", "Changes", "Tests", "Execution", "Settings"],
+        [
+            "Repository",
+            "Tasks",
+            "Changes",
+            "Review",
+            "Tests",
+            "Debug",
+            "Execution",
+            "Settings",
+        ],
         index=0,
     )
 
@@ -70,8 +81,12 @@ def main() -> None:
         tasks_view.render()
     elif page == "Changes":
         changes_view.render()
+    elif page == "Review":
+        review_view.render()
     elif page == "Tests":
         tests_view.render()
+    elif page == "Debug":
+        debug_view.render()
     elif page == "Execution":
         execution_view.render()
     else:

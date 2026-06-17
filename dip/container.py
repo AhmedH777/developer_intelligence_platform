@@ -21,9 +21,11 @@ from dip.storage.database import connect
 from dip.storage.repo import Store
 from dip.tools.commands import CommandRunner
 from dip.tools.patch import PatchService
+from dip.workflows.debug import DebugWorkflow
 from dip.workflows.explore import ExploreWorkflow
 from dip.workflows.implement import ImplementWorkflow
 from dip.workflows.plan import PlanWorkflow
+from dip.workflows.review import ReviewWorkflow
 from dip.workflows.verify import VerificationService
 
 
@@ -63,6 +65,8 @@ class Container:
             verification=self.verification,
             block_on_failed_verification=settings.commands.block_completion_on_failed_verification,
         )
+        self.debug = DebugWorkflow(self.store, self.tasks, self.compiler, self.llm)
+        self.review = ReviewWorkflow(self.store, self.tasks, self.compiler, self.llm)
 
     @classmethod
     def create(

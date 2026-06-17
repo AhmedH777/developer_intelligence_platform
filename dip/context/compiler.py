@@ -198,6 +198,88 @@ class ContextCompiler:
             notes=notes,
         )
 
+    def build_debug_context(
+        self, project_id: str, frames: list, input_text: str
+    ) -> ContextPackage:
+        """Gather source around each in-project traceback frame."""
+
+        notes: list[str] = []
+        regions: list[SourceRegion] = []
+        used_chars = 0
+        for frame in frames:
+            if not getattr(frame, "in_project", False) or not frame.relative_path:
+                continue
+            try:
+                start, end, snippet = self._repo.read_line_window(
+                    project_id, frame.relative_path, frame.line
+                )
+            except (OSError, AssertionError):
+                continue
+            if used_chars + len(snippet) > self._char_budget:
+                notes.append("Stopped adding frames at the context budget.")
+                break
+            regions.append(
+                SourceRegion(
+                    relative_path=frame.relative_path,
+                    symbol=frame.function,
+                    start_line=start,
+                    end_line=end,
+                    content=snippet,
+                    kind="frame",
+                    reason=f"traceback frame: {frame.function} at line {frame.line}",
+                )
+            )
+            used_chars += len(snippet)
+
+        if not regions:
+            notes.append("No in-project frames had readable source.")
+
+        char_estimate = sum(len(r.content) for r in regions)
+        return ContextPackage(
+            user_request=input_text,
+            role="debugger",
+            source_regions=regions,
+            char_estimate=char_estimate,
+            token_estimate=char_estimate // CHARS_PER_TOKEN,
+            notes=notes,
+        )
+
+    def build_review_context(
+        self, paths_and_contents: list[tuple[str, str]], diff: str
+    ) -> ContextPackage:
+        """Build review evidence from changed files' resulting content + the diff."""
+
+        regions: list[SourceRegion] = []
+        used_chars = 0
+        notes: list[str] = []
+        for path, content in paths_and_contents:
+            if used_chars + len(content) > self._char_budget:
+                notes.append(f"{path}: omitted to stay within the context budget.")
+                continue
+            line_count = content.count("\n") + 1
+            regions.append(
+                SourceRegion(
+                    relative_path=path,
+                    symbol=None,
+                    start_line=1,
+                    end_line=line_count,
+                    content=content,
+                    kind="file",
+                    reason="changed file under review",
+                )
+            )
+            used_chars += len(content)
+
+        char_estimate = sum(len(r.content) for r in regions)
+        return ContextPackage(
+            user_request=diff,
+            role="reviewer",
+            source_regions=regions,
+            char_estimate=char_estimate,
+            token_estimate=char_estimate // CHARS_PER_TOKEN,
+            notes=notes,
+        )
+
     @staticmethod
     def _keywords(request: str) -> list[str]:
         seen: list[str] = []
