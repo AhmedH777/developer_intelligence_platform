@@ -30,6 +30,7 @@ from ui.views import (  # noqa: E402
     execution_view,
     memory_view,
     repository_view,
+    research_view,
     review_view,
     settings_view,
     tasks_view,
@@ -71,6 +72,7 @@ def _sidebar() -> str:
         "Page",
         [
             "Repository",
+            "Research",
             "Tasks",
             "Changes",
             "Review",
@@ -93,6 +95,8 @@ def main() -> None:
         return
     if page == "Settings":
         settings_view.render()
+    elif page == "Research":
+        research_view.render()
     elif page == "Tasks":
         tasks_view.render()
     elif page == "Changes":

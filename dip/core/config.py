@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -111,6 +111,14 @@ class OrchestratorSettings(BaseModel):
     auto_accept_on_pass: bool = True
 
 
+class ResearchSettings(BaseModel):
+    """Research Scout configuration (per-repo via .devintel.yaml `research:`)."""
+
+    direction: str = ""
+    max_proposals: int = 5
+    objective: Literal["balanced", "novelty", "feasibility", "impact"] = "balanced"
+
+
 class CommandSettings(BaseModel):
     """Controlled-execution policy (the plan's §15.2)."""
 
@@ -132,6 +140,7 @@ class Settings(BaseModel):
     commands: CommandSettings = Field(default_factory=CommandSettings)
     architecture: ArchitectureSettings = Field(default_factory=ArchitectureSettings)
     orchestrator: OrchestratorSettings = Field(default_factory=OrchestratorSettings)
+    research: ResearchSettings = Field(default_factory=ResearchSettings)
     default_excludes: list[str] = Field(default_factory=lambda: list(DEFAULT_EXCLUDES))
 
     @property
@@ -201,7 +210,7 @@ def _apply_env_overrides(data: dict[str, Any], env: dict[str, str]) -> dict[str,
 REPO_CONFIG_FILENAME = ".devintel.yaml"
 
 # Top-level Settings sections a repo is allowed to override.
-_REPO_OVERRIDABLE = {"llm", "safety", "commands", "architecture", "orchestrator"}
+_REPO_OVERRIDABLE = {"llm", "safety", "commands", "architecture", "orchestrator", "research"}
 
 
 def load_repo_settings(base: Settings, repo_root: Path | str) -> Settings:

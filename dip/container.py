@@ -26,6 +26,7 @@ from dip.repository.repository_service import RepositoryService
 from dip.storage.database import connect
 from dip.storage.repo import Store
 from dip.tools.commands import CommandRunner
+from dip.tools.literature import NullLiteratureProvider
 from dip.tools.patch import PatchService
 from dip.workflows.debug import DebugWorkflow
 from dip.workflows.explore import ExploreWorkflow
@@ -33,6 +34,7 @@ from dip.workflows.implement import ImplementWorkflow
 from dip.workflows.orchestrator import Orchestrator
 from dip.workflows.plan import PlanWorkflow
 from dip.workflows.repair import RepairWorkflow
+from dip.workflows.research import ResearchWorkflow
 from dip.workflows.review import ReviewWorkflow
 from dip.workflows.verify import VerificationService
 
@@ -109,6 +111,19 @@ class Container:
             self.verification,
             self.repair,
             settings.orchestrator,
+        )
+        # Literature provider seam (offline by default; OpenAlex port drops in here).
+        self.literature = NullLiteratureProvider()
+        self.research = ResearchWorkflow(
+            self.store,
+            self.tasks,
+            self.repository,
+            self.compiler,
+            self.router.for_role(roles.RESEARCHER),
+            settings,
+            memory=self.memory,
+            skills=self.skills,
+            literature=self.literature,
         )
 
     @classmethod

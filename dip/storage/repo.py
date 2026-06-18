@@ -28,6 +28,7 @@ from dip.core.models import (
     StoredDebugReport,
     StoredPatchProposal,
     StoredPlan,
+    StoredResearchRun,
     StoredReview,
     Symbol,
     SymbolKind,
@@ -501,6 +502,29 @@ class Store:
     def delete_memory(self, item_id: str) -> None:
         self._conn.execute("DELETE FROM memory_items WHERE id = ?", (item_id,))
         self._conn.commit()
+
+    # ----- research runs ----------------------------------------------------
+    def insert_research_run(self, run: StoredResearchRun) -> None:
+        self._conn.execute(
+            "INSERT INTO research_runs (id, project_id, created_at, payload_json)"
+            " VALUES (?, ?, ?, ?)",
+            (run.id, run.project_id, run.created_at.isoformat(), run.model_dump_json()),
+        )
+        self._conn.commit()
+
+    def get_research_run(self, run_id: str) -> StoredResearchRun | None:
+        row = self._conn.execute(
+            "SELECT payload_json FROM research_runs WHERE id = ?", (run_id,)
+        ).fetchone()
+        return StoredResearchRun.model_validate_json(row["payload_json"]) if row else None
+
+    def get_latest_research_run(self, project_id: str) -> StoredResearchRun | None:
+        row = self._conn.execute(
+            "SELECT payload_json FROM research_runs WHERE project_id = ?"
+            " ORDER BY created_at DESC LIMIT 1",
+            (project_id,),
+        ).fetchone()
+        return StoredResearchRun.model_validate_json(row["payload_json"]) if row else None
 
 
 # ----- row mappers ----------------------------------------------------------

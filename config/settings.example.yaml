@@ -40,6 +40,12 @@ orchestrator:
   auto_repair: true
   auto_accept_on_pass: true
 
+# Research Scout. Usually set per-repo in <repo>/.devintel.yaml under `research:`.
+research:
+  direction: ""          # e.g. "improve sample efficiency of residual RL"
+  max_proposals: 5
+  objective: "balanced"  # balanced | novelty | feasibility | impact
+
 # Directories never scanned/indexed (in addition to .gitignore).
 default_excludes:
   - ".git"

@@ -252,6 +252,39 @@ class ContextCompiler:
             notes=notes,
         )
 
+    def build_research_context(
+        self,
+        direction: str,
+        capability_digest: str,
+        memory_items: list[str] | None = None,
+        skill_items: list[str] | None = None,
+    ) -> ContextPackage:
+        """Assemble the Scout's evidence: a repo capability digest + memory/skills."""
+
+        digest = capability_digest[: self._char_budget]
+        regions = [
+            SourceRegion(
+                relative_path="(capability digest)",
+                symbol=None,
+                start_line=1,
+                end_line=digest.count("\n") + 1,
+                content=digest,
+                kind="digest",
+                reason="repository capability digest",
+            )
+        ]
+        char_estimate = len(digest)
+        return ContextPackage(
+            user_request=direction,
+            role="researcher",
+            source_regions=regions,
+            memory_items=memory_items or [],
+            skills=skill_items or [],
+            char_estimate=char_estimate,
+            token_estimate=char_estimate // CHARS_PER_TOKEN,
+            notes=[],
+        )
+
     def build_review_context(
         self, paths_and_contents: list[tuple[str, str]], diff: str
     ) -> ContextPackage:

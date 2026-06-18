@@ -111,8 +111,26 @@ This completes the general-purpose platform (M8 ML/RL extras are optional).
   *retrieved by relevance and injected into the planner's context* (not just
   displayed), so they actually shape plans.
 - **Per-repo config**: a committed `<repo>/.devintel.yaml` overrides architecture
-  rules, allowed commands, safety limits, model roles, or auto-pilot gates for
-  that repo specifically.
+  rules, allowed commands, safety limits, model roles, auto-pilot gates, or the
+  research direction for that repo specifically.
+
+**Research Scout (M8)**
+
+- From a repo's understanding plus a **research direction**, the agent proposes
+  ranked, grounded **experiment proposals** (hypothesis, method, which modules to
+  touch, variants, evaluation, baselines). Cited modules are checked against the
+  index; project memory (known failures / prior findings) and skills inform the
+  proposals.
+- **Promote a proposal to a Task** → it flows straight into the plan → patch →
+  verify pipeline, closing the loop from *idea* to *implemented experiment*.
+- Fully generic and offline; a `LiteratureProvider` seam is in place for an
+  OpenAlex/literature layer to drop in later.
+- A repo configures its direction in `<repo>/.devintel.yaml`:
+  ```yaml
+  research:
+    direction: "improve sample efficiency of residual RL on the driving task"
+    objective: "balanced"   # or novelty | feasibility | impact
+  ```
 
 ## Architecture
 
@@ -127,7 +145,7 @@ dip/  ── UI-agnostic backend package (no Streamlit imports)
   llm/          LLMClient protocol + OpenAI-compatible client, router (per-role
                 models), prompts, structured-output helper
   workflows/    explore, plan, implement, verify, debug, review, repair,
-                orchestrator (auto-pilot)
+                orchestrator (auto-pilot), research (experiment scout)
   context/      context compiler (explain / plan / implement evidence selection)
   tools/        safety, patch, diffing, commands, result_parsers,
                 traceback_parser
@@ -192,6 +210,9 @@ repository frames, and returns ranked hypotheses with a minimal fix.
 To curate knowledge: **Memory** lets you add/edit/disable durable project facts
 and decisions (which then inform later plans) and browse repository skill files
 under `skills/`.
+
+To find work to do: **Research** → set a direction → **Generate proposals** →
+review the ranked experiments → **Promote to task** to implement one.
 
 ## Test
 

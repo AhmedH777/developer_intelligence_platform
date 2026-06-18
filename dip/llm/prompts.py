@@ -255,6 +255,74 @@ def build_repair_messages(
     return [Message(role="system", content=REPAIR_SYSTEM), Message(role="user", content=user)]
 
 
+RESEARCH_SYSTEM = (
+    "You are a research engineer proposing concrete, runnable experiments for a "
+    "specific codebase, given a research direction.\n"
+    "Rules:\n"
+    "- Ground every proposal in the repository's actual capabilities (from the "
+    "capability digest). `affected_paths` must reference real files from the "
+    "digest, or clearly new files you propose to create (note that in the reason).\n"
+    "- Each proposal must be a concrete experiment: a hypothesis, the change/method "
+    "to implement, variants/ablations, and an evaluation (metrics + baselines).\n"
+    "- Respect project memory: do NOT re-propose known failures; build on prior "
+    "findings.\n"
+    "- Only put items in `related_work` if they appear in the provided literature.\n"
+    "- Respond with a single JSON object only — no prose, no markdown fences."
+)
+
+RESEARCH_JSON_TEMPLATE = """{
+  "summary": "one or two sentences framing the proposed agenda",
+  "proposals": [
+    {
+      "title": "short title",
+      "hypothesis": "what you expect and why",
+      "motivation": "why it matters for the direction",
+      "method": "what to implement/change to run it",
+      "affected_paths": [{"path": "pkg/module.py", "reason": "why"}],
+      "variants": ["ablation or sweep"],
+      "evaluation": "metrics, baselines, success criteria",
+      "baselines": ["baseline to compare against"],
+      "risks": ["risk"],
+      "effort": "low|medium|high",
+      "novelty": "low|medium|high",
+      "expected_impact": "low|medium|high",
+      "related_work": []
+    }
+  ]
+}"""
+
+
+def build_research_messages(
+    context: ContextPackage,
+    direction: str,
+    capability_digest: str,
+    literature: list | None = None,
+    max_proposals: int = 5,
+) -> list[Message]:
+    memory_block = ""
+    if context.memory_items:
+        bullets = "\n".join(f"- {m}" for m in context.memory_items)
+        memory_block = f"Project memory (respect known failures, build on findings):\n{bullets}\n\n"
+
+    skills_block = ""
+    if context.skills:
+        skills_block = "Repository skills (playbooks):\n\n" + "\n\n".join(context.skills) + "\n\n"
+
+    lit_block = ""
+    if literature:
+        lines = "\n".join(f"- {item.citation}" for item in literature)
+        lit_block = f"Relevant literature (cite these in related_work when used):\n{lines}\n\n"
+
+    user = (
+        f"Research direction:\n{direction or '(none given — infer promising directions from the repo)'}\n\n"
+        f"Repository capability digest:\n{capability_digest}\n\n"
+        f"{memory_block}{skills_block}{lit_block}"
+        f"Propose up to {max_proposals} experiments as a JSON object with exactly this shape:\n"
+        f"{RESEARCH_JSON_TEMPLATE}"
+    )
+    return [Message(role="system", content=RESEARCH_SYSTEM), Message(role="user", content=user)]
+
+
 def build_plan_messages(context: ContextPackage) -> list[Message]:
     evidence_blocks: list[str] = []
     for region in context.source_regions:

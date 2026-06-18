@@ -585,4 +585,64 @@ class OrchestratorResult(BaseModel):
     steps: list[OrchestratorStep] = Field(default_factory=list)
 
 
+# ----- Research Scout (M8) ---------------------------------------------------
+
+_LEVEL = Literal["low", "medium", "high"]
+
+
+class ExperimentProposal(BaseModel):
+    """A grounded experiment/research idea the model proposes for a repo."""
+
+    title: str
+    hypothesis: str
+    motivation: str = ""
+    method: str = ""  # what to implement/change to run the experiment
+    affected_paths: list[PlanFileRef] = Field(default_factory=list)
+    variants: list[str] = Field(default_factory=list)  # ablations / sweeps
+    evaluation: str = ""  # metrics, baselines, success criteria
+    baselines: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    effort: _LEVEL = "medium"
+    novelty: _LEVEL = "medium"
+    expected_impact: _LEVEL = "medium"
+    related_work: list[str] = Field(default_factory=list)
+
+    def score(self, objective: str) -> float:
+        """Deterministic rank score in [0, 1+] given a ranking objective."""
+
+        rank = {"low": 0.0, "medium": 0.5, "high": 1.0}
+        nov, imp = rank[self.novelty], rank[self.expected_impact]
+        feas = 1.0 - rank[self.effort]  # lower effort = more feasible
+        if objective == "novelty":
+            return nov
+        if objective == "impact":
+            return imp
+        if objective == "feasibility":
+            return feas
+        return (nov + imp + feas) / 3.0  # balanced
+
+
+class ResearchProposalSet(BaseModel):
+    """Structured model output: a summary plus a list of proposals."""
+
+    summary: str = ""
+    proposals: list[ExperimentProposal] = Field(default_factory=list)
+
+
+class StoredResearchRun(BaseModel):
+    id: str
+    project_id: str
+    direction: str
+    objective: str = "balanced"
+    summary: str = ""
+    proposals: list[ExperimentProposal] = Field(default_factory=list)
+    grounded_paths: list[str] = Field(default_factory=list)
+    ungrounded_paths: list[str] = Field(default_factory=list)
+    context: ContextPackage
+    model: str
+    created_at: datetime = Field(default_factory=_now)
+    raw_response: str = ""
+    repaired: bool = False
+
+
 FileTreeNode.model_rebuild()

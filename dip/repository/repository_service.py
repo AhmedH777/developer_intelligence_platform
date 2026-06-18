@@ -23,6 +23,36 @@ class RepositoryService:
         files = self._store.list_files(project_id)
         return _build_tree(files)
 
+    def capability_digest(
+        self, project_id: str, max_files: int = 40, max_symbols_per_file: int = 8
+    ) -> str:
+        """A compact text summary of what the repo contains (for the Scout).
+
+        Lists top-level packages and, per file, its classes and top-level
+        functions with signatures — enough for the model to reason about the
+        repo's capabilities without sending the whole codebase.
+        """
+
+        files = self._store.list_files(project_id)
+        top_dirs = sorted({f.relative_path.split("/", 1)[0] for f in files if "/" in f.relative_path})
+        lines: list[str] = []
+        if top_dirs:
+            lines.append("Top-level packages/dirs: " + ", ".join(top_dirs))
+        lines.append("")
+        lines.append("Modules and key symbols:")
+        for file in files[:max_files]:
+            symbols = self._store.list_symbols_for_file(file.id)
+            notable = [
+                s for s in symbols if s.kind.value in ("class", "function")
+            ][:max_symbols_per_file]
+            if not notable:
+                continue
+            parts = [s.signature or f"{s.kind.value} {s.name}" for s in notable]
+            lines.append(f"- {file.relative_path}: " + "; ".join(parts))
+        if len(files) > max_files:
+            lines.append(f"... and {len(files) - max_files} more files")
+        return "\n".join(lines)
+
     def get_file(self, project_id: str, relative_path: str) -> SourceFile:
         repo_file = self._store.get_file_by_path(project_id, relative_path)
         if repo_file is None:
