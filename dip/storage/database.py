@@ -46,10 +46,131 @@ CREATE TABLE IF NOT EXISTS repository_symbols (
     parent_symbol_id TEXT
 );
 
+CREATE TABLE IF NOT EXISTS tasks (
+    id          TEXT PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    request     TEXT NOT NULL,
+    state       TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS task_events (
+    id          TEXT PRIMARY KEY,
+    task_id     TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    created_at  TEXT NOT NULL,
+    event_type  TEXT NOT NULL,
+    message     TEXT NOT NULL,
+    data        TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS plans (
+    id          TEXT PRIMARY KEY,
+    task_id     TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    created_at  TEXT NOT NULL,
+    model       TEXT NOT NULL,
+    repaired    INTEGER NOT NULL DEFAULT 0,
+    plan_json   TEXT NOT NULL,
+    grounding_json TEXT NOT NULL,
+    context_json   TEXT NOT NULL,
+    raw_response   TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS patch_proposals (
+    id            TEXT PRIMARY KEY,
+    task_id       TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    created_at    TEXT NOT NULL,
+    model         TEXT NOT NULL,
+    repaired      INTEGER NOT NULL DEFAULT 0,
+    proposal_json TEXT NOT NULL,
+    preview_json  TEXT NOT NULL,
+    context_json  TEXT NOT NULL,
+    raw_response  TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS patch_applications (
+    id              TEXT PRIMARY KEY,
+    task_id         TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    proposal_id     TEXT NOT NULL REFERENCES patch_proposals(id) ON DELETE CASCADE,
+    created_at      TEXT NOT NULL,
+    status          TEXT NOT NULL,
+    changed_files   TEXT NOT NULL,
+    snapshot_json   TEXT NOT NULL,
+    diff            TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS jobs (
+    id              TEXT PRIMARY KEY,
+    project_id      TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    job_type        TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    status          TEXT NOT NULL,
+    command_json    TEXT NOT NULL,
+    log_path        TEXT NOT NULL,
+    exit_code       INTEGER,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS verification_runs (
+    id          TEXT PRIMARY KEY,
+    task_id     TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    created_at  TEXT NOT NULL,
+    status      TEXT NOT NULL,
+    steps_json  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS debug_reports (
+    id           TEXT PRIMARY KEY,
+    task_id      TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+    created_at   TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS review_runs (
+    id           TEXT PRIMARY KEY,
+    task_id      TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+    created_at   TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS memory_items (
+    id             TEXT PRIMARY KEY,
+    project_id     TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    category       TEXT NOT NULL,
+    content        TEXT NOT NULL,
+    source_task_id TEXT,
+    confidence     REAL NOT NULL DEFAULT 0.8,
+    enabled        INTEGER NOT NULL DEFAULT 1,
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS repository_imports (
+    id            TEXT PRIMARY KEY,
+    project_id    TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    file_id       TEXT NOT NULL REFERENCES repository_files(id) ON DELETE CASCADE,
+    relative_path TEXT NOT NULL,
+    module        TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_imports_project ON repository_imports(project_id);
 CREATE INDEX IF NOT EXISTS idx_files_project ON repository_files(project_id);
 CREATE INDEX IF NOT EXISTS idx_symbols_project ON repository_symbols(project_id);
 CREATE INDEX IF NOT EXISTS idx_symbols_file ON repository_symbols(file_id);
 CREATE INDEX IF NOT EXISTS idx_symbols_name ON repository_symbols(project_id, name);
+CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
+CREATE INDEX IF NOT EXISTS idx_events_task ON task_events(task_id);
+CREATE INDEX IF NOT EXISTS idx_plans_task ON plans(task_id);
+CREATE INDEX IF NOT EXISTS idx_proposals_task ON patch_proposals(task_id);
+CREATE INDEX IF NOT EXISTS idx_applications_task ON patch_applications(task_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_project ON jobs(project_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_idem ON jobs(idempotency_key);
+CREATE INDEX IF NOT EXISTS idx_verif_task ON verification_runs(task_id);
+CREATE INDEX IF NOT EXISTS idx_debug_task ON debug_reports(task_id);
+CREATE INDEX IF NOT EXISTS idx_review_task ON review_runs(task_id);
+CREATE INDEX IF NOT EXISTS idx_memory_project ON memory_items(project_id);
 """
 
 
@@ -60,7 +181,10 @@ def connect(database_path: Path | str) -> sqlite3.Connection:
     if path.parent and str(path.parent) not in ("", "."):
         path.parent.mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(str(path))
+    # check_same_thread=False: Streamlit may run reruns of one session on
+    # different threads, and the connection is cached in session state. Access is
+    # serialized per session (no concurrent writers), so this is safe here.
+    conn = sqlite3.connect(str(path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
     conn.executescript(SCHEMA)

@@ -1,8 +1,16 @@
 # Developer Intelligence Platform — example configuration.
 # Copy to config/settings.yaml (gitignored) or set the matching DIP_* env vars.
+#
+# Note: this is the GLOBAL/host config. Each registered repo stores its own data
+# in <repo>/.dip/ (gitignored) and may override sections below via a committed
+# <repo>/.devintel.yaml (llm, safety, commands, architecture, orchestrator).
 
-# Where the SQLite database and artifacts live.
+# Default store location (used by the legacy single-DB Container.create path).
 storage_dir: ".dip"
+
+# Cross-repo registry: which repositories are known to the platform.
+# Override with the DIP_REGISTRY_PATH env var.
+registry_path: "~/.dip/registry.json"
 
 llm:
   # OpenAI-compatible local endpoint. Examples:
@@ -16,6 +24,21 @@ llm:
   max_tokens: 1024
   # Soft budget used by the context compiler (characters, ~4 chars/token).
   context_char_budget: 24000
+
+  # Optional per-role overrides. Unset fields fall back to the base settings
+  # above, so omitting this whole block uses one model for everything.
+  # roles:
+  #   planner:    {model: "gpt-oss", temperature: 0.2}
+  #   coder:      {model: "qwen2.5-coder", temperature: 0.1}
+  #   reviewer:   {model: "gpt-oss", temperature: 0.1}
+  #   debugger:   {model: "gpt-oss", temperature: 0.1}
+  #   explainer:  {temperature: 0.0}
+
+# Auto-pilot: which steps run automatically vs. wait for approval.
+orchestrator:
+  gates: ["plan_approval", "patch_approval"]
+  auto_repair: true
+  auto_accept_on_pass: true
 
 # Directories never scanned/indexed (in addition to .gitignore).
 default_excludes:

@@ -6,14 +6,37 @@ codebase never touches raw rows.
 
 from __future__ import annotations
 
+import json
 import sqlite3
+import uuid
 from datetime import datetime
 
 from dip.core.models import (
+    CommandSpec,
+    ContextPackage,
+    ImplementationPlan,
+    Job,
+    JobStatus,
+    MemoryCategory,
+    MemoryItem,
+    PatchApplication,
+    PatchPreview,
+    PatchProposal,
+    PlanGrounding,
     Project,
     RepositoryFile,
+    StoredDebugReport,
+    StoredPatchProposal,
+    StoredPlan,
+    StoredReview,
     Symbol,
     SymbolKind,
+    Task,
+    TaskEvent,
+    TaskState,
+    VerificationRun,
+    VerificationStatus,
+    VerificationStep,
 )
 
 
@@ -58,15 +81,33 @@ class Store:
 
     # ----- files & symbols (index lifecycle) --------------------------------
     def clear_index(self, project_id: str) -> None:
-        """Remove all indexed files/symbols for a project before re-indexing."""
+        """Remove all indexed files/symbols/imports for a project before re-indexing."""
 
         self._conn.execute(
             "DELETE FROM repository_symbols WHERE project_id = ?", (project_id,)
         )
         self._conn.execute(
+            "DELETE FROM repository_imports WHERE project_id = ?", (project_id,)
+        )
+        self._conn.execute(
             "DELETE FROM repository_files WHERE project_id = ?", (project_id,)
         )
         self._conn.commit()
+
+    def insert_imports(self, project_id: str, file_id: str, relative_path: str, modules: list[str]) -> None:
+        self._conn.executemany(
+            "INSERT INTO repository_imports (id, project_id, file_id, relative_path, module)"
+            " VALUES (?, ?, ?, ?, ?)",
+            [(str(uuid.uuid4()), project_id, file_id, relative_path, m) for m in modules],
+        )
+
+    def list_imports(self, project_id: str) -> list[tuple[str, str]]:
+        rows = self._conn.execute(
+            "SELECT relative_path, module FROM repository_imports WHERE project_id = ?"
+            " ORDER BY relative_path",
+            (project_id,),
+        ).fetchall()
+        return [(r["relative_path"], r["module"]) for r in rows]
 
     def insert_file(self, file: RepositoryFile) -> None:
         self._conn.execute(
@@ -154,6 +195,313 @@ class Store:
         ).fetchone()
         return int(row["n"])
 
+    # ----- tasks ------------------------------------------------------------
+    def insert_task(self, task: Task) -> None:
+        self._conn.execute(
+            "INSERT INTO tasks (id, project_id, title, request, state, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                task.id,
+                task.project_id,
+                task.title,
+                task.request,
+                task.state.value,
+                task.created_at.isoformat(),
+                task.updated_at.isoformat(),
+            ),
+        )
+        self._conn.commit()
+
+    def update_task_state(self, task_id: str, state: TaskState, updated_at: datetime) -> None:
+        self._conn.execute(
+            "UPDATE tasks SET state = ?, updated_at = ? WHERE id = ?",
+            (state.value, updated_at.isoformat(), task_id),
+        )
+        self._conn.commit()
+
+    def get_task(self, task_id: str) -> Task | None:
+        row = self._conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        return _task_from_row(row) if row else None
+
+    def list_tasks(self, project_id: str) -> list[Task]:
+        rows = self._conn.execute(
+            "SELECT * FROM tasks WHERE project_id = ? ORDER BY created_at DESC",
+            (project_id,),
+        ).fetchall()
+        return [_task_from_row(r) for r in rows]
+
+    # ----- task events ------------------------------------------------------
+    def insert_event(self, event: TaskEvent) -> None:
+        self._conn.execute(
+            "INSERT INTO task_events (id, task_id, created_at, event_type, message, data)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                event.id,
+                event.task_id,
+                event.created_at.isoformat(),
+                event.event_type,
+                event.message,
+                json.dumps(event.data),
+            ),
+        )
+        self._conn.commit()
+
+    def list_events(self, task_id: str) -> list[TaskEvent]:
+        rows = self._conn.execute(
+            "SELECT * FROM task_events WHERE task_id = ? ORDER BY created_at",
+            (task_id,),
+        ).fetchall()
+        return [_event_from_row(r) for r in rows]
+
+    # ----- plans ------------------------------------------------------------
+    def insert_plan(self, plan: StoredPlan) -> None:
+        self._conn.execute(
+            "INSERT INTO plans"
+            " (id, task_id, created_at, model, repaired, plan_json, grounding_json,"
+            "  context_json, raw_response)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                plan.id,
+                plan.task_id,
+                plan.created_at.isoformat(),
+                plan.model,
+                1 if plan.repaired else 0,
+                plan.plan.model_dump_json(),
+                plan.grounding.model_dump_json(),
+                plan.context.model_dump_json(),
+                plan.raw_response,
+            ),
+        )
+        self._conn.commit()
+
+    def get_latest_plan(self, task_id: str) -> StoredPlan | None:
+        row = self._conn.execute(
+            "SELECT * FROM plans WHERE task_id = ? ORDER BY created_at DESC LIMIT 1",
+            (task_id,),
+        ).fetchone()
+        return _plan_from_row(row) if row else None
+
+    # ----- patch proposals --------------------------------------------------
+    def insert_patch_proposal(self, proposal: StoredPatchProposal) -> None:
+        self._conn.execute(
+            "INSERT INTO patch_proposals"
+            " (id, task_id, created_at, model, repaired, proposal_json, preview_json,"
+            "  context_json, raw_response)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                proposal.id,
+                proposal.task_id,
+                proposal.created_at.isoformat(),
+                proposal.model,
+                1 if proposal.repaired else 0,
+                proposal.proposal.model_dump_json(),
+                proposal.preview.model_dump_json(),
+                proposal.context.model_dump_json(),
+                proposal.raw_response,
+            ),
+        )
+        self._conn.commit()
+
+    def get_patch_proposal(self, proposal_id: str) -> StoredPatchProposal | None:
+        row = self._conn.execute(
+            "SELECT * FROM patch_proposals WHERE id = ?", (proposal_id,)
+        ).fetchone()
+        return _proposal_from_row(row) if row else None
+
+    def get_latest_patch_proposal(self, task_id: str) -> StoredPatchProposal | None:
+        row = self._conn.execute(
+            "SELECT * FROM patch_proposals WHERE task_id = ? ORDER BY created_at DESC LIMIT 1",
+            (task_id,),
+        ).fetchone()
+        return _proposal_from_row(row) if row else None
+
+    # ----- patch applications -----------------------------------------------
+    def insert_patch_application(self, application: PatchApplication) -> None:
+        self._conn.execute(
+            "INSERT INTO patch_applications"
+            " (id, task_id, proposal_id, created_at, status, changed_files, snapshot_json, diff)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                application.id,
+                application.task_id,
+                application.proposal_id,
+                application.created_at.isoformat(),
+                application.status,
+                json.dumps(application.changed_files),
+                json.dumps(application.snapshot),
+                application.diff,
+            ),
+        )
+        self._conn.commit()
+
+    def update_application_status(self, application_id: str, status: str) -> None:
+        self._conn.execute(
+            "UPDATE patch_applications SET status = ? WHERE id = ?",
+            (status, application_id),
+        )
+        self._conn.commit()
+
+    def get_latest_application(self, task_id: str) -> PatchApplication | None:
+        row = self._conn.execute(
+            "SELECT * FROM patch_applications WHERE task_id = ? ORDER BY created_at DESC LIMIT 1",
+            (task_id,),
+        ).fetchone()
+        return _application_from_row(row) if row else None
+
+    # ----- jobs -------------------------------------------------------------
+    def insert_job(self, job: Job) -> None:
+        self._conn.execute(
+            "INSERT INTO jobs"
+            " (id, project_id, job_type, idempotency_key, status, command_json,"
+            "  log_path, exit_code, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                job.id,
+                job.project_id,
+                job.job_type,
+                job.idempotency_key,
+                job.status.value,
+                job.command.model_dump_json(),
+                job.log_path,
+                job.exit_code,
+                job.created_at.isoformat(),
+                job.updated_at.isoformat(),
+            ),
+        )
+        self._conn.commit()
+
+    def update_job(self, job_id: str, status: JobStatus, exit_code: int | None, updated_at: datetime) -> None:
+        self._conn.execute(
+            "UPDATE jobs SET status = ?, exit_code = ?, updated_at = ? WHERE id = ?",
+            (status.value, exit_code, updated_at.isoformat(), job_id),
+        )
+        self._conn.commit()
+
+    def get_job(self, job_id: str) -> Job | None:
+        row = self._conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        return _job_from_row(row) if row else None
+
+    def find_active_job(self, idempotency_key: str) -> Job | None:
+        row = self._conn.execute(
+            "SELECT * FROM jobs WHERE idempotency_key = ? AND status IN ('queued','running')"
+            " ORDER BY created_at DESC LIMIT 1",
+            (idempotency_key,),
+        ).fetchone()
+        return _job_from_row(row) if row else None
+
+    def list_jobs(self, project_id: str, limit: int = 50) -> list[Job]:
+        rows = self._conn.execute(
+            "SELECT * FROM jobs WHERE project_id = ? ORDER BY created_at DESC LIMIT ?",
+            (project_id, limit),
+        ).fetchall()
+        return [_job_from_row(r) for r in rows]
+
+    # ----- verification runs ------------------------------------------------
+    def insert_verification_run(self, run: VerificationRun) -> None:
+        self._conn.execute(
+            "INSERT INTO verification_runs (id, task_id, created_at, status, steps_json)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (
+                run.id,
+                run.task_id,
+                run.created_at.isoformat(),
+                run.status.value,
+                json.dumps([s.model_dump() for s in run.steps]),
+            ),
+        )
+        self._conn.commit()
+
+    def get_latest_verification(self, task_id: str) -> VerificationRun | None:
+        row = self._conn.execute(
+            "SELECT * FROM verification_runs WHERE task_id = ? ORDER BY created_at DESC LIMIT 1",
+            (task_id,),
+        ).fetchone()
+        return _verification_from_row(row) if row else None
+
+    # ----- debug reports ----------------------------------------------------
+    def insert_debug_report(self, report: StoredDebugReport) -> None:
+        self._conn.execute(
+            "INSERT INTO debug_reports (id, task_id, created_at, payload_json)"
+            " VALUES (?, ?, ?, ?)",
+            (report.id, report.task_id, report.created_at.isoformat(), report.model_dump_json()),
+        )
+        self._conn.commit()
+
+    def get_latest_debug_report(self, task_id: str) -> StoredDebugReport | None:
+        row = self._conn.execute(
+            "SELECT payload_json FROM debug_reports WHERE task_id = ? ORDER BY created_at DESC LIMIT 1",
+            (task_id,),
+        ).fetchone()
+        return StoredDebugReport.model_validate_json(row["payload_json"]) if row else None
+
+    # ----- review runs ------------------------------------------------------
+    def insert_review(self, review: StoredReview) -> None:
+        self._conn.execute(
+            "INSERT INTO review_runs (id, task_id, created_at, payload_json)"
+            " VALUES (?, ?, ?, ?)",
+            (review.id, review.task_id, review.created_at.isoformat(), review.model_dump_json()),
+        )
+        self._conn.commit()
+
+    def get_latest_review(self, task_id: str) -> StoredReview | None:
+        row = self._conn.execute(
+            "SELECT payload_json FROM review_runs WHERE task_id = ? ORDER BY created_at DESC LIMIT 1",
+            (task_id,),
+        ).fetchone()
+        return StoredReview.model_validate_json(row["payload_json"]) if row else None
+
+    # ----- memory -----------------------------------------------------------
+    def insert_memory(self, item: MemoryItem) -> None:
+        self._conn.execute(
+            "INSERT INTO memory_items"
+            " (id, project_id, category, content, source_task_id, confidence, enabled,"
+            "  created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                item.id,
+                item.project_id,
+                item.category.value,
+                item.content,
+                item.source_task_id,
+                item.confidence,
+                1 if item.enabled else 0,
+                item.created_at.isoformat(),
+                item.updated_at.isoformat(),
+            ),
+        )
+        self._conn.commit()
+
+    def update_memory(self, item: MemoryItem) -> None:
+        self._conn.execute(
+            "UPDATE memory_items SET content = ?, confidence = ?, enabled = ?, updated_at = ?"
+            " WHERE id = ?",
+            (
+                item.content,
+                item.confidence,
+                1 if item.enabled else 0,
+                item.updated_at.isoformat(),
+                item.id,
+            ),
+        )
+        self._conn.commit()
+
+    def get_memory(self, item_id: str) -> MemoryItem | None:
+        row = self._conn.execute(
+            "SELECT * FROM memory_items WHERE id = ?", (item_id,)
+        ).fetchone()
+        return _memory_from_row(row) if row else None
+
+    def list_memory(self, project_id: str) -> list[MemoryItem]:
+        rows = self._conn.execute(
+            "SELECT * FROM memory_items WHERE project_id = ? ORDER BY created_at DESC",
+            (project_id,),
+        ).fetchall()
+        return [_memory_from_row(r) for r in rows]
+
+    def delete_memory(self, item_id: str) -> None:
+        self._conn.execute("DELETE FROM memory_items WHERE id = ?", (item_id,))
+        self._conn.commit()
+
 
 # ----- row mappers ----------------------------------------------------------
 def _project_from_row(row: sqlite3.Row) -> Project:
@@ -192,4 +540,107 @@ def _symbol_from_row(row: sqlite3.Row) -> Symbol:
         signature=row["signature"],
         docstring=row["docstring"],
         parent_symbol_id=row["parent_symbol_id"],
+    )
+
+
+def _task_from_row(row: sqlite3.Row) -> Task:
+    return Task(
+        id=row["id"],
+        project_id=row["project_id"],
+        title=row["title"],
+        request=row["request"],
+        state=TaskState(row["state"]),
+        created_at=datetime.fromisoformat(row["created_at"]),
+        updated_at=datetime.fromisoformat(row["updated_at"]),
+    )
+
+
+def _event_from_row(row: sqlite3.Row) -> TaskEvent:
+    return TaskEvent(
+        id=row["id"],
+        task_id=row["task_id"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        event_type=row["event_type"],
+        message=row["message"],
+        data=json.loads(row["data"]),
+    )
+
+
+def _plan_from_row(row: sqlite3.Row) -> StoredPlan:
+    return StoredPlan(
+        id=row["id"],
+        task_id=row["task_id"],
+        plan=ImplementationPlan.model_validate_json(row["plan_json"]),
+        grounding=PlanGrounding.model_validate_json(row["grounding_json"]),
+        context=ContextPackage.model_validate_json(row["context_json"]),
+        model=row["model"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        raw_response=row["raw_response"],
+        repaired=bool(row["repaired"]),
+    )
+
+
+def _proposal_from_row(row: sqlite3.Row) -> StoredPatchProposal:
+    return StoredPatchProposal(
+        id=row["id"],
+        task_id=row["task_id"],
+        proposal=PatchProposal.model_validate_json(row["proposal_json"]),
+        preview=PatchPreview.model_validate_json(row["preview_json"]),
+        context=ContextPackage.model_validate_json(row["context_json"]),
+        model=row["model"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        raw_response=row["raw_response"],
+        repaired=bool(row["repaired"]),
+    )
+
+
+def _application_from_row(row: sqlite3.Row) -> PatchApplication:
+    return PatchApplication(
+        id=row["id"],
+        task_id=row["task_id"],
+        proposal_id=row["proposal_id"],
+        status=row["status"],
+        changed_files=json.loads(row["changed_files"]),
+        snapshot=json.loads(row["snapshot_json"]),
+        diff=row["diff"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+    )
+
+
+def _job_from_row(row: sqlite3.Row) -> Job:
+    return Job(
+        id=row["id"],
+        project_id=row["project_id"],
+        job_type=row["job_type"],
+        idempotency_key=row["idempotency_key"],
+        status=JobStatus(row["status"]),
+        command=CommandSpec.model_validate_json(row["command_json"]),
+        log_path=row["log_path"],
+        exit_code=row["exit_code"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        updated_at=datetime.fromisoformat(row["updated_at"]),
+    )
+
+
+def _verification_from_row(row: sqlite3.Row) -> VerificationRun:
+    steps = [VerificationStep.model_validate(s) for s in json.loads(row["steps_json"])]
+    return VerificationRun(
+        id=row["id"],
+        task_id=row["task_id"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        steps=steps,
+    )
+
+
+def _memory_from_row(row: sqlite3.Row) -> MemoryItem:
+    return MemoryItem(
+        id=row["id"],
+        project_id=row["project_id"],
+        category=MemoryCategory(row["category"]),
+        content=row["content"],
+        source_task_id=row["source_task_id"],
+        confidence=row["confidence"],
+        enabled=bool(row["enabled"]),
+        created_at=datetime.fromisoformat(row["created_at"]),
+        updated_at=datetime.fromisoformat(row["updated_at"]),
     )

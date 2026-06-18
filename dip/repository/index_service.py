@@ -13,7 +13,7 @@ from pathlib import Path
 from dip.core.config import Settings
 from dip.core.models import IndexResult, RepositoryFile, Symbol, SymbolKind
 from dip.repository.ignore import IgnoreRules
-from dip.repository.python_ast import extract_symbols
+from dip.repository.python_ast import extract_imports, extract_symbols
 from dip.repository.scanner import scan_python_files
 from dip.storage.repo import Store
 
@@ -52,6 +52,10 @@ class IndexService:
             )
             self._store.insert_file(repo_file)
             files_indexed += 1
+
+            imports = extract_imports(sf.content)
+            if imports:
+                self._store.insert_imports(project_id, file_id, sf.relative_path, imports)
 
             module_name = _module_name(sf.relative_path)
             result = extract_symbols(module_name, sf.content)
