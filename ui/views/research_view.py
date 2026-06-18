@@ -55,6 +55,20 @@ def render() -> None:
         st.markdown(f"**Agenda:** {run.summary}")
     st.caption(f"Direction: _{run.direction or '(inferred)'}_  ·  ranked by **{run.objective}**")
 
+    if run.literature:
+        with st.expander(f"📚 Literature consulted ({len(run.literature)})"):
+            for item in run.literature:
+                link = f"[{item.title}]({item.url})" if item.url else item.title
+                meta = " · ".join(
+                    x for x in [
+                        item.authors[0] + " et al." if item.authors else "",
+                        str(item.year) if item.year else "",
+                        item.venue,
+                        f"{item.cited_by_count} citations" if item.cited_by_count else "",
+                    ] if x
+                )
+                st.markdown(f"- {link}  \n  _{meta}_")
+
     for i, p in enumerate(run.proposals):
         header = (
             f"{_LEVEL_ICON[p.novelty]} **{p.title}** — "

@@ -123,13 +123,16 @@ This completes the general-purpose platform (M8 ML/RL extras are optional).
   proposals.
 - **Promote a proposal to a Task** → it flows straight into the plan → patch →
   verify pipeline, closing the loop from *idea* to *implemented experiment*.
-- Fully generic and offline; a `LiteratureProvider` seam is in place for an
-  OpenAlex/literature layer to drop in later.
+- Optional **literature grounding** via the public **OpenAlex** API (no key):
+  enable `research.literature` to attach relevant papers to the run and let the
+  model cite them in `related_work`. Off by default (offline); degrades
+  gracefully when the network is restricted.
 - A repo configures its direction in `<repo>/.devintel.yaml`:
   ```yaml
   research:
     direction: "improve sample efficiency of residual RL on the driving task"
     objective: "balanced"   # or novelty | feasibility | impact
+    literature: true        # ground proposals in OpenAlex papers (needs network)
   ```
 
 ## Architecture

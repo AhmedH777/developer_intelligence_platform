@@ -26,7 +26,7 @@ from dip.repository.repository_service import RepositoryService
 from dip.storage.database import connect
 from dip.storage.repo import Store
 from dip.tools.commands import CommandRunner
-from dip.tools.literature import NullLiteratureProvider
+from dip.tools.literature import NullLiteratureProvider, OpenAlexLiteratureProvider
 from dip.tools.patch import PatchService
 from dip.workflows.debug import DebugWorkflow
 from dip.workflows.explore import ExploreWorkflow
@@ -112,8 +112,12 @@ class Container:
             self.repair,
             settings.orchestrator,
         )
-        # Literature provider seam (offline by default; OpenAlex port drops in here).
-        self.literature = NullLiteratureProvider()
+        # Literature provider: offline by default; OpenAlex when enabled per-repo.
+        self.literature = (
+            OpenAlexLiteratureProvider(mailto=settings.research.literature_mailto)
+            if settings.research.literature
+            else NullLiteratureProvider()
+        )
         self.research = ResearchWorkflow(
             self.store,
             self.tasks,

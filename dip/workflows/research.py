@@ -76,7 +76,7 @@ class ResearchWorkflow:
             skill_briefs = [
                 format_skill_brief(s) for s in self._skills.retrieve(project.root_path, query)
             ]
-        literature = self._literature.search(query, limit=5)
+        literature = self._literature.search(query, limit=cfg.literature_max)
 
         context = self._compiler.build_research_context(
             direction, digest, memory_items=memory_labels, skill_items=skill_briefs
@@ -102,6 +102,7 @@ class ResearchWorkflow:
             proposals=proposals,
             grounded_paths=grounded,
             ungrounded_paths=ungrounded,
+            literature=literature,
             context=context,
             model=result.model,
             raw_response=result.raw_text,

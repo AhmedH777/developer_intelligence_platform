@@ -113,6 +113,36 @@ def test_promote_to_task_creates_task(settings: Settings, repo_copy: Path) -> No
     assert any(e.event_type == "research" for e in container.tasks.list_events(task.id))
 
 
+def test_literature_enabled_populates_run_and_prompt(
+    settings: Settings, repo_copy: Path
+) -> None:
+    from dip.core.config import ResearchSettings
+    from dip.tools.literature import OpenAlexLiteratureProvider
+
+    settings.research = ResearchSettings(literature=True)
+    container, project_id, llm = _container(settings, repo_copy)
+    assert isinstance(container.literature, OpenAlexLiteratureProvider)
+
+    # Stub the HTTP fetch so no real network call happens.
+    container.literature._fetch = lambda url: {  # type: ignore[method-assign]
+        "results": [
+            {
+                "display_name": "Residual RL for Driving",
+                "publication_year": 2025,
+                "authorships": [{"author": {"display_name": "A. Doe"}}],
+                "primary_location": {"source": {"display_name": "CoRL"}},
+                "doi": "https://doi.org/10.1/y",
+                "cited_by_count": 7,
+            }
+        ]
+    }
+
+    run = container.research.propose(project_id, direction="residual rl sample efficiency")
+    assert run.literature and run.literature[0].title == "Residual RL for Driving"
+    # The citation was offered to the model in the prompt.
+    assert "Residual RL for Driving" in llm.last[-1].content
+
+
 def test_direction_from_repo_config(tmp_path: Path, repo_copy: Path) -> None:
     (repo_copy / ".devintel.yaml").write_text(
         "research:\n  direction: improve sample efficiency\n  max_proposals: 3\n",

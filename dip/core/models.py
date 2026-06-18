@@ -590,6 +590,24 @@ class OrchestratorResult(BaseModel):
 _LEVEL = Literal["low", "medium", "high"]
 
 
+class LiteratureItem(BaseModel):
+    """A paper surfaced by a literature provider (e.g. OpenAlex)."""
+
+    title: str
+    year: int | None = None
+    authors: list[str] = Field(default_factory=list)
+    venue: str = ""
+    url: str = ""
+    cited_by_count: int = 0
+    abstract_snippet: str = ""
+
+    @property
+    def citation(self) -> str:
+        who = self.authors[0] + " et al." if self.authors else "Unknown"
+        yr = f" ({self.year})" if self.year else ""
+        return f"{who}{yr}. {self.title}"
+
+
 class ExperimentProposal(BaseModel):
     """A grounded experiment/research idea the model proposes for a repo."""
 
@@ -638,6 +656,7 @@ class StoredResearchRun(BaseModel):
     proposals: list[ExperimentProposal] = Field(default_factory=list)
     grounded_paths: list[str] = Field(default_factory=list)
     ungrounded_paths: list[str] = Field(default_factory=list)
+    literature: list[LiteratureItem] = Field(default_factory=list)
     context: ContextPackage
     model: str
     created_at: datetime = Field(default_factory=_now)

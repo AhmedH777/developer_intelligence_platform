@@ -117,6 +117,11 @@ class ResearchSettings(BaseModel):
     direction: str = ""
     max_proposals: int = 5
     objective: Literal["balanced", "novelty", "feasibility", "impact"] = "balanced"
+    # Literature grounding via OpenAlex. Off by default to stay offline; opt in
+    # per repo. ``literature_mailto`` opts into OpenAlex's faster polite pool.
+    literature: bool = False
+    literature_mailto: str = ""
+    literature_max: int = 5
 
 
 class CommandSettings(BaseModel):

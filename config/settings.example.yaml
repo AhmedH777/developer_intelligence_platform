@@ -45,6 +45,12 @@ research:
   direction: ""          # e.g. "improve sample efficiency of residual RL"
   max_proposals: 5
   objective: "balanced"  # balanced | novelty | feasibility | impact
+  # Literature grounding via the public OpenAlex API (no key). Off by default to
+  # stay offline; needs outbound access to api.openalex.org when enabled, and
+  # degrades gracefully (no papers) if the network is restricted.
+  literature: false
+  literature_mailto: ""  # your email -> OpenAlex "polite pool" (faster, optional)
+  literature_max: 5
 
 # Directories never scanned/indexed (in addition to .gitignore).
 default_excludes:
