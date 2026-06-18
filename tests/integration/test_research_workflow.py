@@ -123,11 +123,11 @@ def test_literature_enabled_populates_run_and_prompt(
     container, project_id, llm = _container(settings, repo_copy)
     assert isinstance(container.literature, OpenAlexLiteratureProvider)
 
-    # Stub the HTTP fetch so no real network call happens.
-    container.literature._fetch = lambda url: {  # type: ignore[method-assign]
+    # Stub the HTTP layer so no real network call happens.
+    container.literature._get = lambda path, params=None: {  # type: ignore[method-assign]
         "results": [
             {
-                "display_name": "Residual RL for Driving",
+                "title": "Residual RL for Driving",
                 "publication_year": 2025,
                 "authorships": [{"author": {"display_name": "A. Doe"}}],
                 "primary_location": {"source": {"display_name": "CoRL"}},
