@@ -125,8 +125,10 @@ This completes the general-purpose platform (M8 ML/RL extras are optional).
   verify pipeline, closing the loop from *idea* to *implemented experiment*.
 - Optional **literature grounding** via the public **OpenAlex** API (no key):
   enable `research.literature` to attach relevant papers to the run and let the
-  model cite them in `related_work`. Off by default (offline); degrades
-  gracefully when the network is restricted.
+  model cite them in `related_work`. Beyond a flat search, it **expands from seed
+  papers via their references + citations**, dedupes, and ranks (seeds first, then
+  by citation count) for a richer, more relevant neighborhood. Off by default
+  (offline); degrades gracefully when the network is restricted.
 - A repo configures its direction in `<repo>/.devintel.yaml`:
   ```yaml
   research:

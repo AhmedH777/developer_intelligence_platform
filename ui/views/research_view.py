@@ -57,6 +57,7 @@ def render() -> None:
 
     if run.literature:
         with st.expander(f"📚 Literature consulted ({len(run.literature)})"):
+            st.caption("Seed papers from search, expanded via their references + citations.")
             for item in run.literature:
                 link = f"[{item.title}]({item.url})" if item.url else item.title
                 meta = " · ".join(

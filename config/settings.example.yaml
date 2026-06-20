@@ -51,6 +51,7 @@ research:
   literature: false
   literature_mailto: ""  # your email -> OpenAlex "polite pool" (faster, optional)
   literature_max: 5
+  literature_expand: true  # expand seed papers via references + citations
 
 # Directories never scanned/indexed (in addition to .gitignore).
 default_excludes:

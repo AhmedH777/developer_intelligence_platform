@@ -122,6 +122,8 @@ class ResearchSettings(BaseModel):
     literature: bool = False
     literature_mailto: str = ""
     literature_max: int = 5
+    # Expand from seed papers via their references + citations for richer grounding.
+    literature_expand: bool = True
 
 
 class CommandSettings(BaseModel):

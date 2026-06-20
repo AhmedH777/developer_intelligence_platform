@@ -104,6 +104,49 @@ def test_empty_query_returns_empty() -> None:
     assert OpenAlexLiteratureProvider().search("   ") == []
 
 
+def _work(wid: str, cites: int, refs: list[str] | None = None) -> dict:
+    return {
+        "id": f"https://openalex.org/{wid}",
+        "title": wid,
+        "cited_by_count": cites,
+        "referenced_works": refs or [],
+    }
+
+
+def test_gather_expands_dedupes_and_ranks() -> None:
+    seed = _work("Seed", cites=5, refs=["https://openalex.org/Ref1"])
+
+    class Gathering(OpenAlexLiteratureProvider):
+        def _get(self, path, params=None):
+            f = (params or {}).get("filter", "")
+            if "search" in (params or {}):  # seed search
+                return {"results": [seed]}
+            if f.startswith("openalex:"):  # references batch
+                return {"results": [_work("Ref1", cites=100)]}
+            if f.startswith("cites:"):  # citations of the seed
+                return {"results": [_work("Cite1", cites=50), seed], "meta": {"next_cursor": None}}
+            return {"results": []}
+
+    items = Gathering().gather("graph nets", limit=5, expand=True, seeds=1)
+    titles = [i.title for i in items]
+    # Seed first (relevance), then expansions by citation count; seed not duplicated.
+    assert titles[0] == "Seed"
+    assert titles == ["Seed", "Ref1", "Cite1"]
+
+
+def test_gather_without_expand_is_just_search() -> None:
+    class SearchOnly(OpenAlexLiteratureProvider):
+        def _get(self, path, params=None):
+            return {"results": [_work("A", 1), _work("B", 2)]}
+
+    items = SearchOnly().gather("x", limit=5, expand=False)
+    assert {i.title for i in items} == {"A", "B"}
+
+
+def test_null_provider_gather_offline() -> None:
+    assert NullLiteratureProvider().gather("anything") == []
+
+
 def test_fetch_citations_paginates_and_respects_limit() -> None:
     pages = [
         {"results": [SAMPLE_WORK, SAMPLE_WORK], "meta": {"next_cursor": "c2"}},

@@ -44,6 +44,8 @@ class LiteratureProvider(Protocol):
 
     def search(self, query: str, limit: int = 5) -> list[LiteratureItem]: ...
 
+    def gather(self, query: str, limit: int = 5, expand: bool = True) -> list[LiteratureItem]: ...
+
 
 class NullLiteratureProvider:
     """Offline default: no external lookups. Keeps the Scout fully offline."""
@@ -51,6 +53,9 @@ class NullLiteratureProvider:
     available: bool = False
 
     def search(self, query: str, limit: int = 5) -> list[LiteratureItem]:
+        return []
+
+    def gather(self, query: str, limit: int = 5, expand: bool = True) -> list[LiteratureItem]:
         return []
 
 
@@ -136,57 +141,118 @@ class OpenAlexLiteratureProvider:
             return []
         n = max(1, min(limit, 25))
         try:
-            data = self._get("works", _search_params(query, mode, n))
+            works = self._search_works(query, mode, n)
         except Exception:
             return []
-        return [_to_item(w) for w in (data.get("results") or [])[:limit]]
+        return [_to_item(w) for w in works[:limit]]
+
+    def gather(
+        self, query: str, limit: int = 5, expand: bool = True, seeds: int = 2
+    ) -> list[LiteratureItem]:
+        """Search for seed papers, expand via their references + citations, then
+        dedupe and rank: seeds first (by relevance), expansions by citation count.
+
+        This produces a richer, more relevant neighborhood than a flat search,
+        which surfaces foundations and follow-up work for better grounding.
+        """
+
+        if not query.strip():
+            return []
+        try:
+            seed_works = self._search_works(query, "title", max(seeds, limit))
+        except Exception:
+            return []
+
+        works: dict[str, dict[str, Any]] = {}
+        order: list[str] = []
+
+        def add(work: dict[str, Any]) -> None:
+            wid = short_id(work.get("id", ""))
+            if wid not in works:
+                works[wid] = work
+                order.append(wid)
+
+        for w in seed_works:
+            add(w)
+        seed_ids = {short_id(w.get("id", "")) for w in seed_works[:seeds]}
+
+        if expand:
+            for w in seed_works[:seeds]:
+                refs = (w.get("referenced_works") or [])[:50]
+                try:
+                    for rw in self._works_by_ids(refs).values():
+                        add(rw)
+                except Exception:
+                    pass
+                try:
+                    for cw in self._citation_works(w.get("id", ""), 10):
+                        add(cw)
+                except Exception:
+                    pass
+
+        seeds_in_order = [works[i] for i in order if i in seed_ids]
+        others = [works[i] for i in order if i not in seed_ids]
+        others.sort(key=lambda w: -(w.get("cited_by_count") or 0))
+        return [_to_item(w) for w in (seeds_in_order + others)[:limit]]
 
     def fetch_works_by_ids(self, ids: list[str]) -> dict[str, LiteratureItem]:
         """Batch-fetch (50 at a time) -> {short_id: item}. Used for references."""
 
-        out: dict[str, LiteratureItem] = {}
-        if not ids:
-            return out
-        sids = [short_id(w) for w in ids]
         try:
-            for i in range(0, len(sids), 50):
-                chunk = sids[i : i + 50]
-                data = self._get(
-                    "works",
-                    {"filter": "openalex:" + "|".join(chunk), "per-page": len(chunk), "select": WORK_SELECT},
-                )
-                for w in data.get("results", []):
-                    out[short_id(w["id"])] = _to_item(w)
+            raw = self._works_by_ids(ids)
         except Exception:
-            return out
-        return out
+            return {}
+        return {k: _to_item(v) for k, v in raw.items()}
 
     def fetch_citations(self, work_id: str, limit: int) -> list[LiteratureItem]:
         """Cursor-paginate works that cite ``work_id``, most-cited first."""
 
-        short = short_id(work_id)
-        out: list[LiteratureItem] = []
-        cursor: str | None = "*"
         try:
-            while cursor and len(out) < limit:
-                page = min(200, limit - len(out))
-                data = self._get(
-                    "works",
-                    {
-                        "filter": f"cites:{short}",
-                        "per-page": page,
-                        "sort": "cited_by_count:desc",
-                        "cursor": cursor,
-                        "select": WORK_SELECT,
-                    },
-                )
-                results = data.get("results", [])
-                if not results:
-                    break
-                out.extend(_to_item(w) for w in results)
-                cursor = (data.get("meta") or {}).get("next_cursor")
+            return [_to_item(w) for w in self._citation_works(work_id, limit)]
         except Exception:
-            return out[:limit]
+            return []
+
+    # ----- raw fetchers (return OpenAlex work dicts) ------------------------
+    def _search_works(self, query: str, mode: str, n: int) -> list[dict[str, Any]]:
+        data = self._get("works", _search_params(query, mode, n))
+        return data.get("results") or []
+
+    def _works_by_ids(self, ids: list[str]) -> dict[str, dict[str, Any]]:
+        out: dict[str, dict[str, Any]] = {}
+        if not ids:
+            return out
+        sids = [short_id(w) for w in ids]
+        for i in range(0, len(sids), 50):
+            chunk = sids[i : i + 50]
+            data = self._get(
+                "works",
+                {"filter": "openalex:" + "|".join(chunk), "per-page": len(chunk), "select": WORK_SELECT},
+            )
+            for w in data.get("results", []):
+                out[short_id(w["id"])] = w
+        return out
+
+    def _citation_works(self, work_id: str, limit: int) -> list[dict[str, Any]]:
+        short = short_id(work_id)
+        out: list[dict[str, Any]] = []
+        cursor: str | None = "*"
+        while cursor and len(out) < limit:
+            page = min(200, limit - len(out))
+            data = self._get(
+                "works",
+                {
+                    "filter": f"cites:{short}",
+                    "per-page": page,
+                    "sort": "cited_by_count:desc",
+                    "cursor": cursor,
+                    "select": WORK_SELECT,
+                },
+            )
+            results = data.get("results", [])
+            if not results:
+                break
+            out.extend(results)
+            cursor = (data.get("meta") or {}).get("next_cursor")
         return out[:limit]
 
     # ----- HTTP -------------------------------------------------------------
