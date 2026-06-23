@@ -71,10 +71,16 @@ class OpenAICompatibleClient:
     ) -> LLMResponse:
         client = self._ensure_client()
         extra: dict[str, Any] = {}
-        # Reasoning models (e.g. gpt-oss) accept a reasoning_effort; passed via
+        # Reasoning models (e.g. gpt-oss) accept a reasoning control; passed via
         # extra_body so non-reasoning servers that ignore it are unaffected.
+        # OpenRouter uses a `reasoning` object; other OpenAI-compatible servers
+        # use the flat `reasoning_effort`.
         if self._settings.reasoning_effort:
-            extra["extra_body"] = {"reasoning_effort": self._settings.reasoning_effort}
+            effort = self._settings.reasoning_effort
+            if "openrouter" in (self._settings.base_url or ""):
+                extra["extra_body"] = {"reasoning": {"effort": effort}}
+            else:
+                extra["extra_body"] = {"reasoning_effort": effort}
         completion = client.chat.completions.create(
             model=self._settings.model,
             messages=[{"role": m.role, "content": m.content} for m in messages],
