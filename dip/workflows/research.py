@@ -86,9 +86,17 @@ class ResearchWorkflow:
         messages = build_research_messages(
             context, direction, digest, literature=literature, max_proposals=cfg.max_proposals
         )
-        result = generate_structured(self._llm, messages, ResearchProposalSet)
+        # Proposal sets are large; give the model generous output headroom.
+        result = generate_structured(
+            self._llm,
+            messages,
+            ResearchProposalSet,
+            max_tokens=max(self._settings.llm.max_tokens, 4096),
+        )
         if not result.ok or result.value is None:
-            raise ResearchError(f"Proposal generation failed: {result.error}")
+            error = ResearchError(f"Proposal generation failed: {result.error}")
+            error.raw = result.raw_text  # type: ignore[attr-defined]
+            raise error
 
         proposals = list(result.value.proposals)
         grounded, ungrounded = self._validate_grounding(project_id, proposals)

@@ -67,9 +67,16 @@ def extract_json_object(text: str) -> str | None:
 
 
 def _try_parse(text: str, schema: type[T]) -> tuple[T | None, str | None]:
+    if not text or not text.strip():
+        return None, "Model returned an empty response (check the model name / endpoint)."
     candidate = extract_json_object(text)
     if candidate is None:
-        return None, "No JSON object found in the response."
+        if "{" in text:
+            return None, (
+                "Incomplete JSON (likely cut off — raise DIP_LLM_MAX_TOKENS or lower "
+                "research.max_proposals)."
+            )
+        return None, "No JSON object in the response (the model returned prose, not JSON)."
     try:
         return schema.model_validate_json(candidate), None
     except ValidationError as exc:
@@ -84,8 +91,9 @@ def generate_structured(
     schema: type[T],
     *,
     max_repairs: int = 1,
+    max_tokens: int | None = None,
 ) -> StructuredResult[T]:
-    response = llm.generate(messages)
+    response = llm.generate(messages, max_tokens=max_tokens)
     text = response.text
     model = response.model
     value, error = _try_parse(text, schema)
@@ -103,7 +111,7 @@ def generate_structured(
             ),
         )
         retry = messages + [Message(role="assistant", content=text), repair]
-        response = llm.generate(retry)
+        response = llm.generate(retry, max_tokens=max_tokens)
         text = response.text
         model = response.model
         value, error = _try_parse(text, schema)

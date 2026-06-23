@@ -47,7 +47,7 @@ class LLMSettings(BaseModel):
     api_key: str = "not-needed-for-local"
     model: str = "qwen2.5-coder"
     temperature: float = 0.1
-    max_tokens: int = 1024
+    max_tokens: int = 2048
     context_char_budget: int = 24000
     # role name -> overrides. Unset roles fall back to the base settings above.
     roles: dict[str, RoleModel] = Field(default_factory=dict)

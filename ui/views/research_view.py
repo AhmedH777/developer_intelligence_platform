@@ -39,7 +39,14 @@ def render() -> None:
             try:
                 container.research.propose(project_id, direction=direction, objective=objective)
             except ResearchError as exc:
-                st.error(f"Proposal generation failed: {exc}")
+                st.error(str(exc))
+                raw = getattr(exc, "raw", "")
+                with st.expander("Raw model output (to diagnose)"):
+                    st.code(raw or "(empty — the model returned nothing)")
+                st.caption(
+                    "Tips: raise DIP_LLM_MAX_TOKENS, lower research.max_proposals, or use a "
+                    "stronger instruction-following model."
+                )
                 return
             except Exception as exc:
                 st.error(f"Research error: {exc}")
