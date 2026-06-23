@@ -47,7 +47,14 @@ class OpenAICompatibleClient:
 
     def _ensure_client(self) -> Any:
         if self._client is None:
-            from openai import OpenAI
+            try:
+                from openai import OpenAI
+            except ImportError as exc:  # actionable message instead of "No module named openai"
+                raise RuntimeError(
+                    "The 'openai' package is required to call the local model. "
+                    "Install it in the environment running the app: "
+                    "`python -m pip install openai` (or `pip install -e \".[dev]\"`)."
+                ) from exc
 
             self._client = OpenAI(
                 base_url=self._settings.base_url,
