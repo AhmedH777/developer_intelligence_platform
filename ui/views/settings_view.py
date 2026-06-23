@@ -19,6 +19,11 @@ def render() -> None:
     st.header("Settings")
     registry = get_registry()
 
+    # Flash message carried across the rerun that follows a registration.
+    flash = st.session_state.pop("_flash", None)
+    if flash:
+        st.success(flash)
+
     st.subheader("Register a Python repository")
     st.caption(
         "Each repo stores its own data in a gitignored `<repo>/.dip/` folder, so "
@@ -35,17 +40,22 @@ def render() -> None:
             st.error(str(exc))
         else:
             set_active_repo_path(entry.path)
-            container = get_container()
-            with st.spinner("Indexing repository…"):
-                result = container.index.index_project(container.project_id)
-            st.success(
-                f"Registered '{entry.name}'. Indexed {result.files_indexed} files / "
-                f"{result.symbols_indexed} symbols into {entry.path}/.dip."
-            )
-            if result.errors:
-                with st.expander(f"{len(result.errors)} file(s) skipped"):
-                    for err in result.errors:
-                        st.text(err)
+            try:
+                container = get_container()
+                with st.spinner("Indexing repository…"):
+                    result = container.index.index_project(container.project_id)
+            except Exception as exc:  # surface a clear cause instead of a stuck UI
+                st.error(f"Could not open/index '{entry.path}': {exc}")
+            else:
+                msg = (
+                    f"Registered '{entry.name}'. Indexed {result.files_indexed} files / "
+                    f"{result.symbols_indexed} symbols into {entry.path}/.dip."
+                )
+                if result.errors:
+                    msg += f"  ({len(result.errors)} file(s) skipped)"
+                # Rerun so the sidebar picks up the new repo and selects it.
+                st.session_state["_flash"] = msg
+                st.rerun()
 
     st.divider()
     st.subheader("Registered repositories")
