@@ -86,7 +86,12 @@ class OpenAICompatibleClient:
         )
         message = completion.choices[0].message
         # Most servers put the answer in content; some reasoning parsers leave
-        # content empty and expose the answer under reasoning_content.
-        text = message.content or getattr(message, "reasoning_content", "") or ""
+        # content empty and expose it under reasoning_content / reasoning.
+        text = (
+            message.content
+            or getattr(message, "reasoning_content", "")
+            or getattr(message, "reasoning", "")
+            or ""
+        )
         raw = completion.model_dump() if hasattr(completion, "model_dump") else {}
         return LLMResponse(text=text, model=self._settings.model, raw=raw)
