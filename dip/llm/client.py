@@ -70,6 +70,11 @@ class OpenAICompatibleClient:
         max_tokens: int | None = None,
     ) -> LLMResponse:
         client = self._ensure_client()
+        extra: dict[str, Any] = {}
+        # Reasoning models (e.g. gpt-oss) accept a reasoning_effort; passed via
+        # extra_body so non-reasoning servers that ignore it are unaffected.
+        if self._settings.reasoning_effort:
+            extra["extra_body"] = {"reasoning_effort": self._settings.reasoning_effort}
         completion = client.chat.completions.create(
             model=self._settings.model,
             messages=[{"role": m.role, "content": m.content} for m in messages],
@@ -77,7 +82,11 @@ class OpenAICompatibleClient:
                 self._settings.temperature if temperature is None else temperature
             ),
             max_tokens=self._settings.max_tokens if max_tokens is None else max_tokens,
+            **extra,
         )
-        text = completion.choices[0].message.content or ""
+        message = completion.choices[0].message
+        # Most servers put the answer in content; some reasoning parsers leave
+        # content empty and expose the answer under reasoning_content.
+        text = message.content or getattr(message, "reasoning_content", "") or ""
         raw = completion.model_dump() if hasattr(completion, "model_dump") else {}
         return LLMResponse(text=text, model=self._settings.model, raw=raw)

@@ -49,6 +49,10 @@ class LLMSettings(BaseModel):
     temperature: float = 0.1
     max_tokens: int = 2048
     context_char_budget: int = 24000
+    # For reasoning models (e.g. gpt-oss): "low" | "medium" | "high". Empty = omit.
+    # Reasoning tokens count against max_tokens, so lower effort = more room for the
+    # actual answer.
+    reasoning_effort: str = ""
     # role name -> overrides. Unset roles fall back to the base settings above.
     roles: dict[str, RoleModel] = Field(default_factory=dict)
 
@@ -196,6 +200,7 @@ def _apply_env_overrides(data: dict[str, Any], env: dict[str, str]) -> dict[str,
         "DIP_LLM_MODEL": ("model", str),
         "DIP_LLM_TEMPERATURE": ("temperature", float),
         "DIP_LLM_MAX_TOKENS": ("max_tokens", int),
+        "DIP_LLM_REASONING_EFFORT": ("reasoning_effort", str),
     }
     for env_name, (key, caster) in env_map.items():
         raw = env.get(env_name)

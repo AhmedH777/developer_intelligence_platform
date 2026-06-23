@@ -91,7 +91,7 @@ class ResearchWorkflow:
             self._llm,
             messages,
             ResearchProposalSet,
-            max_tokens=max(self._settings.llm.max_tokens, 4096),
+            max_tokens=max(self._settings.llm.max_tokens, 8192),
         )
         if not result.ok or result.value is None:
             error = ResearchError(f"Proposal generation failed: {result.error}")
